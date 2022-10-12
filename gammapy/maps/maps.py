@@ -27,7 +27,7 @@ class Maps(MutableMapping):
         return self._geom
 
     def __setitem__(self, key, value):
-        if value is not None and not isinstance(value, Map):
+        if value is not None and not isinstance(value, Map) and not isinstance(value,RegionNDMap):
             raise ValueError(
                 f"MapDict can only contain Map objects, got {type(value)} instead."
             )

@@ -584,6 +584,8 @@ class WcsNDMap(WcsMap):
         if isinstance(region, PointPixelRegion):
             lon, lat = region.center.x, region.center.y
             contains = self.get_by_pix((lon, lat))
+            # TODO: Remove this hack that allows for a PointSkyRegion to include everything.
+            contains = np.asarray(np.ones(contains.shape),dtype=bool)
         else:
             idx = self.geom.get_idx()
             coords_pix = PixCoord(idx[0][self.data], idx[1][self.data])
