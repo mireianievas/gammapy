@@ -1,4 +1,5 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+from copy import deepcopy
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose, assert_equal
@@ -6,7 +7,7 @@ import astropy.units as u
 from astropy.coordinates import Angle
 from gammapy.irf import EnergyDispersion2D
 from gammapy.maps import MapAxes, MapAxis
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 @requires_data()
@@ -84,12 +85,15 @@ class TestEnergyDispersion2D:
         axes = MapAxes([energy_axis_true, migra_axis, offset_axis])
 
         data = np.ones(shape=axes.shape)
-        
+
         edisp_test = EnergyDispersion2D(axes=axes)
         with pytest.raises(ValueError) as error:
             wrong_unit = u.m**2
             EnergyDispersion2D(axes=axes, data=data * wrong_unit)
-            assert error.match(f"Error: {wrong_unit} is not an allowed unit. {edisp_test.tag} requires {edisp_test.default_unit} data quantities.")
+            assert error.match(
+                f"Error: {wrong_unit} is not an allowed unit. {edisp_test.tag} "
+                f"requires {edisp_test.default_unit} data quantities."
+            )
 
         edisp = EnergyDispersion2D(axes=axes, data=data)
 
@@ -98,20 +102,22 @@ class TestEnergyDispersion2D:
         assert_equal(hdu.data["ENERG_LO"][0], energy[:-1].value)
         assert hdu.header["TUNIT1"] == edisp.axes["energy_true"].unit
 
-    @requires_dependency("matplotlib")
     def test_plot_migration(self):
         with mpl_plot_check():
             self.edisp.plot_migration()
 
-    @requires_dependency("matplotlib")
     def test_plot_bias(self):
         with mpl_plot_check():
             self.edisp.plot_bias()
 
-    @requires_dependency("matplotlib")
     def test_peek(self):
         with mpl_plot_check():
             self.edisp.peek()
+
+    def test_eq(self):
+        assert not self.edisp2 == self.edisp
+        edisp1 = deepcopy(self.edisp)
+        assert self.edisp == edisp1
 
 
 @requires_data("gammapy-data")

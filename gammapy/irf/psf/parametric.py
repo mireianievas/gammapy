@@ -31,7 +31,7 @@ class ParametricPSF(PSF):
     @property
     @abc.abstractmethod
     def required_parameters(self):
-        pass
+        return []
 
     @abc.abstractmethod
     def evaluate_direct(self, rad, **kwargs):
@@ -248,6 +248,39 @@ class ParametricPSF(PSF):
         value = self.evaluate_direct(rad=rad, **pars)
         return value
 
+    def is_allclose(self, other, rtol_axes=1e-3, atol_axes=1e-6, **kwargs):
+        """Compare two data IRFs for equivalency
+
+        Parameters
+        ----------
+        other : `gammapy.irfs.ParametricPSF`
+            The PSF to compare against
+        rtol_axes : float
+            Relative tolerance for the axes comparison.
+        atol_axes : float
+            Relative tolerance for the axes comparison.
+        **kwargs : dict
+                keywords passed to `numpy.allclose`
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether the IRF is all close.
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
+        data_eq = True
+
+        for key in self.quantity.keys():
+            if self.quantity[key].shape != other.quantity[key].shape:
+                return False
+
+            data_eq &= np.allclose(self.quantity[key], other.quantity[key], **kwargs)
+
+        axes_eq = self.axes.is_allclose(other.axes, rtol=rtol_axes, atol=atol_axes)
+        return axes_eq and data_eq
+
 
 def get_sigmas_and_norms(**kwargs):
     """Convert scale and amplitude to norms"""
@@ -256,7 +289,7 @@ def get_sigmas_and_norms(**kwargs):
     scale = kwargs["scale"]
     ones = np.ones(scale.shape)
     amplitudes = u.Quantity([ones, kwargs["ampl_2"], kwargs["ampl_3"]])
-    norms = 2 * scale * amplitudes * sigmas ** 2
+    norms = 2 * scale * amplitudes * sigmas**2
     return sigmas, norms
 
 
@@ -373,10 +406,9 @@ class PSFKing(ParametricPSF):
             Containment
         """
         with np.errstate(divide="ignore", invalid="ignore"):
-            term_1 = -((1 + rad ** 2 / (2 * gamma * sigma ** 2)) ** -gamma)
-            term_2 = rad ** 2 + 2 * gamma * sigma ** 2
-            term_3 = 2 * gamma * sigma ** 2
-            containment = term_1 * term_2 / term_3
+            powterm = 1 - gamma
+            term = (1 + rad**2 / (2 * gamma * sigma**2)) ** powterm
+            containment = 1 - term
 
         return containment
 
@@ -397,8 +429,8 @@ class PSFKing(ParametricPSF):
             PSF value
         """
         with np.errstate(divide="ignore"):
-            term1 = 1 / (2 * np.pi * sigma ** 2)
+            term1 = 1 / (2 * np.pi * sigma**2)
             term2 = 1 - 1 / gamma
-            term3 = (1 + rad ** 2 / (2 * gamma * sigma ** 2)) ** (-gamma)
+            term3 = (1 + rad**2 / (2 * gamma * sigma**2)) ** (-gamma)
 
         return term1 * term2 * term3

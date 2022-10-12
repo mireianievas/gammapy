@@ -1,16 +1,13 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import copy
 import logging
-
 import numpy as np
 from astropy.convolution import Tophat2DKernel
 from astropy.coordinates import Angle
-
 from gammapy.datasets import MapDataset, MapDatasetOnOff
 from gammapy.maps import Map
 from gammapy.modeling.models import PowerLawSpectralModel, SkyModel
 from gammapy.stats import CashCountsStatistic, WStatCountsStatistic
-
 from ..core import Estimator
 from ..utils import estimate_exposure_reco_energy
 from .core import FluxMaps
@@ -120,7 +117,7 @@ class ExcessMapEstimator(Estimator):
       geom                   : WcsGeom
       axes                   : ['lon', 'lat', 'energy']
       shape                  : (320, 240, 1)
-      quantities             : ['npred', 'npred_excess', 'counts', 'ts', 'sqrt_ts', 'norm', 'norm_err']
+      quantities             : ['npred', 'npred_excess', 'counts', 'ts', 'sqrt_ts', 'norm', 'norm_err']  # noqa: E501
       ref. model             : pl
       n_sigma                : 1
       n_sigma_ul             : 2
@@ -166,8 +163,8 @@ class ExcessMapEstimator(Estimator):
     def run(self, dataset):
         """Compute correlated excess, Li & Ma significance and flux maps
 
-        If a model is set on the dataset the excess map estimator will compute the excess taking into account
-        the predicted counts of the model.
+        If a model is set on the dataset the excess map estimator will compute
+        the excess taking into account the predicted counts of the model.
 
         Parameters
         ----------
@@ -220,7 +217,7 @@ class ExcessMapEstimator(Estimator):
         elif dataset.mask_safe:
             mask = dataset.mask_safe
         else:
-            mask = np.ones(dataset.data_shape, dtype=bool)
+            mask = Map.from_geom(geom, data=True, dtype=bool)
 
         counts_stat = convolved_map_dataset_counts_statistics(
             dataset, kernel, mask, self.correlate_off
@@ -254,7 +251,7 @@ class ExcessMapEstimator(Estimator):
 
             if "errn-errp" in self.selection_optional:
                 maps["norm_errn"] = (
-                    Map.from_geom(geom, data=-counts_stat.compute_errn(self.n_sigma))
+                    Map.from_geom(geom, data=counts_stat.compute_errn(self.n_sigma))
                     / reco_exposure
                 )
                 maps["norm_errp"] = (

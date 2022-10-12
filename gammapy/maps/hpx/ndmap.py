@@ -5,6 +5,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from regions import PointSkyRegion
+import matplotlib.pyplot as plt
 from gammapy.utils.units import unit_from_fits_image_hdu
 from ..coord import MapCoord
 from ..geom import pix_tuple_to_idx
@@ -286,17 +287,32 @@ class HpxNDMap(HpxMap):
         map_out.coadd(self)
         return map_out
 
-    def upsample(self, factor, preserve_counts=True):
+    def upsample(self, factor, order=0, preserve_counts=True, axis_name=None):
+        if axis_name:
+            raise NotImplementedError(
+                "HpxNDMap.upsample does currently not support upsampling of non-spatial axes."
+            )
+
+        if order != 0:
+            raise ValueError(
+                "HpxNDMap.upsample currently only supports nearest upsampling"
+            )
+
         geom = self.geom.upsample(factor)
         coords = geom.get_coord()
         data = self.get_by_coord(coords)
 
         if preserve_counts:
-            data /= factor ** 2
+            data /= factor**2
 
         return self._init_copy(geom=geom, data=data)
 
-    def downsample(self, factor, preserve_counts=True):
+    def downsample(self, factor, preserve_counts=True, axis_name=None):
+        if axis_name:
+            raise NotImplementedError(
+                "HpxNDMap does currently not support upsampling of non-spatial axes."
+            )
+
         geom = self.geom.downsample(factor)
         coords = self.geom.get_coord()
         vals = self.get_by_coord(coords)
@@ -305,7 +321,7 @@ class HpxNDMap(HpxMap):
         map_out.fill_by_coord(coords, vals)
 
         if not preserve_counts:
-            map_out.data /= factor ** 2
+            map_out.data /= factor**2
 
         return map_out
 
@@ -338,7 +354,7 @@ class HpxNDMap(HpxMap):
         else:
             return self.copy()
 
-    def interp_by_coord(self, coords, method="linear"):
+    def interp_by_coord(self, coords, method="linear", fill_value=None):
         # inherited docstring
         coords = MapCoord.create(coords, frame=self.geom.frame)
 
@@ -349,7 +365,7 @@ class HpxNDMap(HpxMap):
         else:
             raise ValueError(f"Invalid interpolation method: {method!r}")
 
-    def interp_by_pix(self, pix, method=None):
+    def interp_by_pix(self, pix, method=None, fill_value=None):
         """Interpolate map values at the given pixel coordinates."""
         raise NotImplementedError
 
@@ -406,8 +422,10 @@ class HpxNDMap(HpxMap):
         data = other.quantity.to_value(self.unit)
 
         if nan_to_num:
-            data = data.copy()
-            data[~np.isfinite(data)] = 0
+            not_finite = ~np.isfinite(data)
+            if np.any(not_finite):
+                data = data.copy()
+                data[not_finite] = 0
 
         if weights is not None:
             if not other.geom.to_image() == weights.geom.to_image():
@@ -456,7 +474,7 @@ class HpxNDMap(HpxMap):
             )
             full_sky_map = HpxNDMap.from_geom(full_sky_geom)
 
-            for img, idx in self.iter_by_image():
+            for img, idx in self.iter_by_image_data():
                 full_sky_map.data[idx][ipix] = img
         else:
             full_sky_map = self
@@ -472,7 +490,7 @@ class HpxNDMap(HpxMap):
 
         smoothed_data = np.empty(self.data.shape, dtype=float)
 
-        for img, idx in full_sky_map.iter_by_image():
+        for img, idx in full_sky_map.iter_by_image_data():
             img = img.astype(float)
 
             if self.geom.nest:
@@ -651,7 +669,7 @@ class HpxNDMap(HpxMap):
                 axes=self.geom.axes,
             )
             full_sky_map = HpxNDMap.from_geom(full_sky_geom)
-            for img, idx in self.iter_by_image():
+            for img, idx in self.iter_by_image_data():
                 full_sky_map.data[idx][ipix] = img
         else:
             full_sky_map = self
@@ -675,7 +693,7 @@ class HpxNDMap(HpxMap):
 
         # Do the convolution in each image plane
         convolved_data = np.empty(self.data.shape, dtype=float)
-        for img, idx in full_sky_map.iter_by_image():
+        for img, idx in full_sky_map.iter_by_image_data():
             img = img.astype(float)
             if nest:
                 # reorder to ring to do the convolution
@@ -737,7 +755,7 @@ class HpxNDMap(HpxMap):
 
         return val
 
-    def fill_by_idx(self, idx, weights=None):
+    def _resample_by_idx(self, idx, weights=None, preserve_counts=False):
         idx = pix_tuple_to_idx(idx)
         msk = np.all(np.stack([t != INVALID_INDEX.int for t in idx]), axis=0)
         if weights is not None:
@@ -755,7 +773,12 @@ class HpxNDMap(HpxMap):
         idx_local = np.ravel_multi_index(idx_local, self.data.T.shape)
         idx_local, idx_inv = np.unique(idx_local, return_inverse=True)
         weights = np.bincount(idx_inv, weights=weights)
+        if not preserve_counts:
+            weights /= np.bincount(idx_inv).astype(self.data.dtype)
         self.data.T.flat[idx_local] += weights
+
+    def fill_by_idx(self, idx, weights=None):
+        return self._resample_by_idx(idx, weights=weights, preserve_counts=True)
 
     def set_by_idx(self, idx, vals):
         idx = pix_tuple_to_idx(idx)
@@ -939,7 +962,6 @@ class HpxNDMap(HpxMap):
         # FIXME: Figure out how to force a square aspect-ratio like imshow
 
         import healpy as hp
-        import matplotlib.pyplot as plt
         from matplotlib.collections import PatchCollection
         from matplotlib.patches import Polygon
 
@@ -1060,3 +1082,6 @@ class HpxNDMap(HpxMap):
             return m.plot_mask(ax=ax, **kwargs)
         else:
             raise ValueError(f"Invalid method: {method!r}")
+
+    def sample_coord(self, n_events, random_state=0):
+        raise NotImplementedError("HpXNDMap.sample_coord is not implemented yet.")

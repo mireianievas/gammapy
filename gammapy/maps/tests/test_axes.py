@@ -6,10 +6,11 @@ import astropy.units as u
 from astropy.table import Table
 from astropy.time import Time
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
 from gammapy.data import GTI
 from gammapy.maps import LabelMapAxis, MapAxes, MapAxis, RegionNDMap, TimeMapAxis
 from gammapy.utils.scripts import make_path
-from gammapy.utils.testing import assert_time_allclose, requires_data, requires_dependency, mpl_plot_check
+from gammapy.utils.testing import assert_time_allclose, mpl_plot_check, requires_data
 from gammapy.utils.time import time_ref_to_dict
 
 MAP_AXIS_INTERP = [
@@ -67,6 +68,11 @@ def energy_axis_ref():
 def test_mapaxis_repr():
     axis = MapAxis([1, 2, 3], name="test")
     assert "MapAxis" in repr(axis)
+
+
+def test_mapaxis_invalid_name():
+    with pytest.raises(TypeError):
+        MapAxis([1, 2, 3], name=1)
 
 
 @pytest.mark.parametrize(
@@ -279,6 +285,19 @@ def test_map_axes_pad():
     axes = axes.pad(axis_name="energy", pad_width=1)
 
     assert_allclose(axes["energy"].edges, [0.1, 1, 10, 100] * u.TeV)
+
+
+def test_rename():
+    axis_1 = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=1)
+    axis = axis_1.rename("energy_true")
+    assert axis_1.name == "energy"
+    assert axis.name == "energy_true"
+
+    axis_2 = MapAxis.from_bounds(0, 1, nbin=2, unit="deg", name="rad")
+
+    axes = MapAxes([axis_1, axis_2])
+    axes = axes.rename_axes(["energy", "rad"], ["energy_true", "angle"])
+    assert axes.names == ["energy_true", "angle"]
 
 
 @pytest.mark.parametrize(("edges", "interp"), MAP_AXIS_INTERP)
@@ -605,6 +624,16 @@ def test_axes_basics():
 
     assert axes.primary_axis.name == "time"
 
+    new_axes = axes.copy()
+    assert new_axes[0] == new_axes[0]
+    assert new_axes[1] == new_axes[1]
+    assert new_axes == axes
+
+    energy_axis = MapAxis.from_energy_edges([1, 4] * u.TeV)
+    new_axes = MapAxes([energy_axis, time_axis.copy()])
+    assert new_axes != axes
+
+
 def test_axes_getitem():
     axis1 = MapAxis.from_bounds(1, 4, 3, name="a1")
     axis2 = axis1.copy(name="a2")
@@ -619,6 +648,7 @@ def test_axes_getitem():
     assert len(axes[0:1]) == 1
     assert isinstance(axes[["a3", "a1"]], MapAxes)
     assert axes[["a3", "a1"]][0].name == "a3"
+
 
 def test_label_map_axis_basics():
     axis = LabelMapAxis(labels=["label-1", "label-2"], name="label-axis")
@@ -698,12 +728,10 @@ def test_mixed_axes():
     assert len(table) == 24
 
 
-@requires_dependency("matplotlib")
 def test_map_axis_format_plot_xaxis():
-    import matplotlib.pyplot as plt
     axis = MapAxis.from_energy_bounds(
-            "0.03 TeV", "300 TeV", nbin=20,
-            per_decade=True, name="energy_true")
+        "0.03 TeV", "300 TeV", nbin=20, per_decade=True, name="energy_true"
+    )
 
     with mpl_plot_check():
         ax = plt.gca()
@@ -714,11 +742,12 @@ def test_map_axis_format_plot_xaxis():
     assert ax1.xaxis.label.properties()["text"] == "True Energy [TeV]"
 
 
-@requires_dependency("matplotlib")
 def test_time_map_axis_format_plot_xaxis(time_intervals):
-    import matplotlib.pyplot as plt
     axis = TimeMapAxis(
-        time_intervals["t_min"], time_intervals["t_max"], time_intervals["t_ref"], name="time"
+        time_intervals["t_min"],
+        time_intervals["t_max"],
+        time_intervals["t_ref"],
+        name="time",
     )
 
     with mpl_plot_check():

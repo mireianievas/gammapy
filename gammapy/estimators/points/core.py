@@ -1,14 +1,17 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
+from copy import deepcopy
 import numpy as np
 from scipy import stats
 from astropy.io.registry import IORegistryError
 from astropy.table import Table, vstack
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
 from gammapy.maps import MapAxis, Maps, RegionNDMap, TimeMapAxis
 from gammapy.maps.axes import flat_if_equal
 from gammapy.modeling.models import TemplateSpectralModel
 from gammapy.modeling.models.spectral import scale_plot_flux
+from gammapy.modeling.scipy import stat_profile_ul_scipy
 from gammapy.utils.scripts import make_path
 from gammapy.utils.table import table_standardise_units_copy
 from ..map.core import DEFAULT_UNIT, FluxMaps
@@ -479,8 +482,6 @@ class FluxPoints(FluxMaps):
         ax : `~matplotlib.axes.Axes`
             Axis object
         """
-        import matplotlib.pyplot as plt
-
         if sed_type is None:
             sed_type = self.sed_type_plot_default
 
@@ -496,26 +497,32 @@ class FluxPoints(FluxMaps):
 
         # get errors and ul
         y_errn, y_errp = self._plot_get_flux_err(sed_type=sed_type)
-
         is_ul = self.is_ul.data
+
         if self.has_ul and y_errn and is_ul.any():
             flux_ul = getattr(self, sed_type + "_ul").quantity
-            y_errn.data[is_ul] = 0.5 * flux_ul[is_ul].to_value(y_errn.unit)
+            y_errn.data[is_ul] = np.clip(
+                0.5 * flux_ul[is_ul].to_value(y_errn.unit), 0, np.inf
+            )
             y_errp.data[is_ul] = 0
             flux.data[is_ul] = flux_ul[is_ul].to_value(flux.unit)
             kwargs.setdefault("uplims", is_ul)
 
         # set flux points plotting defaults
         if y_errp and y_errn:
-            y_errp = scale_plot_flux(y_errp, energy_power=energy_power).quantity
-            y_errn = scale_plot_flux(y_errn, energy_power=energy_power).quantity
+            y_errp = np.clip(
+                scale_plot_flux(y_errp, energy_power=energy_power).quantity, 0, np.inf
+            )
+            y_errn = np.clip(
+                scale_plot_flux(y_errn, energy_power=energy_power).quantity, 0, np.inf
+            )
             kwargs.setdefault("yerr", (y_errn, y_errp))
         else:
             kwargs.setdefault("yerr", None)
 
         flux = scale_plot_flux(flux=flux.to_unit(flux_unit), energy_power=energy_power)
         ax = flux.plot(ax=ax, **kwargs)
-        ax.set_ylabel(f"{sed_type} ({ax.yaxis.units})")
+        ax.set_ylabel(f"{sed_type} [{ax.yaxis.units}]")
         ax.set_yscale("log")
         return ax
 
@@ -544,8 +551,6 @@ class FluxPoints(FluxMaps):
         ax : `~matplotlib.axes.Axes`
             Axis object
         """
-        import matplotlib.pyplot as plt
-
         if ax is None:
             ax = plt.gca()
 
@@ -565,7 +570,12 @@ class FluxPoints(FluxMaps):
         if isinstance(axis, TimeMapAxis) and not axis.is_contiguous:
             axis = axis.to_contiguous()
 
-        yunits = kwargs.pop("yunits", DEFAULT_UNIT[sed_type])
+        if ax.yaxis.units is None:
+            yunits = DEFAULT_UNIT[sed_type]
+        else:
+            yunits = ax.yaxis.units
+
+        ax.yaxis.set_units(yunits)
 
         flux_ref = getattr(self, sed_type + "_ref").to(yunits)
 
@@ -612,3 +622,52 @@ class FluxPoints(FluxMaps):
             ax.figure.colorbar(caxes, ax=ax, label=label)
 
         return ax
+
+    def recompute_ul(self, n_sigma_ul=2, **kwargs):
+        """Recompute upper limits corresponding to the given value.
+        The pre-computed stat profiles must exist for the re-computation.
+
+        Parameters
+        ----------
+        n_sigma_ul : int
+            Number of sigma to use for upper limit computation. Default is 2.
+        **kwargs : dict
+            Keyword arguments passed to `~scipy.optimize.brentq`.
+
+        Returns
+        -------
+        flux_points : `FluxPoints`
+            A new FluxPoints object with modified upper limits
+
+        Examples
+        --------
+        >>> from gammapy.estimators import FluxPoints
+        >>> filename = '$GAMMAPY_DATA/tests/spectrum/flux_points/binlike.fits'
+        >>> flux_points = FluxPoints.read(filename)
+        >>> flux_points_recomputed = flux_points.recompute_ul(n_sigma_ul=3)
+        >>> print(flux_points.meta["n_sigma_ul"], flux_points.flux_ul.data[0])
+        2.0 [[3.95451985e-09]]
+        >>> print(flux_points_recomputed.meta["n_sigma_ul"], flux_points_recomputed.flux_ul.data[0])
+        3 [[6.22245374e-09]]
+        """
+
+        if not self.has_stat_profiles:
+            raise ValueError(
+                "Stat profiles not present. Upper limit computation is not possible"
+            )
+
+        delta_ts = n_sigma_ul**2
+
+        flux_points = deepcopy(self)
+
+        value_scan = self.stat_scan.geom.axes["norm"].center
+        shape_axes = self.stat_scan.geom._shape[slice(3, None)]
+        for idx in np.ndindex(shape_axes):
+            stat_scan = np.abs(
+                self.stat_scan.data[idx].squeeze() - self.stat.data[idx].squeeze()
+            )
+            flux_points.norm_ul.data[idx] = stat_profile_ul_scipy(
+                value_scan, stat_scan, delta_ts=delta_ts, **kwargs
+            )
+        flux_points.meta["n_sigma_ul"] = n_sigma_ul
+        return flux_points

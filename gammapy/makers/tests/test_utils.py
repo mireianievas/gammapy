@@ -143,7 +143,7 @@ def bkg_2d():
     return bkg_2d
 
 
-def bkg_3d_custom(symmetry="constant"):
+def bkg_3d_custom(symmetry="constant", fov_align="RADEC"):
     if symmetry == "constant":
         data = np.ones((2, 3, 3))
     elif symmetry == "symmetric":
@@ -163,15 +163,19 @@ def bkg_3d_custom(symmetry="constant"):
         axes=[energy_axis, fov_lon_axis, fov_lat_axis],
         data=data,
         unit=u.Unit("s-1 MeV-1 sr-1"),
-        interp_kwargs=dict(bounds_error=False, fill_value=None, values_scale="log")
+        interp_kwargs=dict(bounds_error=False, fill_value=None, values_scale="log"),
+        fov_alignment=fov_align
         # allow extrapolation for symmetry tests
     )
 
 
-def test_map_background_2d(bkg_2d):
+@requires_data()
+def test_map_background_2d(bkg_2d, fixed_pointing_info):
     axis = MapAxis.from_edges([0.1, 1, 10], name="energy", unit="TeV", interp="log")
-    skydir = SkyCoord("0d", "0d", frame="galactic")
-    geom = WcsGeom.create(npix=(3, 3), binsz=4, axes=[axis], skydir=skydir)
+    skydir = fixed_pointing_info.radec.galactic
+    geom = WcsGeom.create(
+        npix=(3, 3), binsz=4, axes=[axis], skydir=skydir, frame="galactic"
+    )
 
     bkg = make_map_background_irf(
         pointing=skydir,
@@ -180,7 +184,16 @@ def test_map_background_2d(bkg_2d):
         geom=geom,
     )
 
-    assert_allclose(bkg.data[:, 1, 1], [1.807479, 0.183212], rtol=1e-5)
+    assert_allclose(bkg.data[:, 1, 1], [1.80822, 0.183287], rtol=1e-5)
+
+    # Check that function works also passing the FixedPointingInfo
+    bkg_fpi = make_map_background_irf(
+        pointing=fixed_pointing_info,
+        ontime="42 s",
+        bkg=bkg_2d,
+        geom=geom,
+    )
+    assert_allclose(bkg.data, bkg_fpi.data, rtol=1e-5)
 
 
 def make_map_background_irf_with_symmetry(fpi, symmetry="constant"):
@@ -287,6 +300,19 @@ def test_make_map_background_irf_asym(fixed_pointing_info_aligned):
         assert_allclose(d[0, 1] * 9, d[2, 1], rtol=1e-4)  # Asymmetric along lat
 
 
+@requires_data()
+def test_make_map_background_irf_skycoord(fixed_pointing_info_aligned):
+    axis = MapAxis.from_edges([0.1, 1, 10], name="energy", unit="TeV", interp="log")
+    position = fixed_pointing_info_aligned.radec
+    with pytest.raises(TypeError):
+        make_map_background_irf(
+            pointing=position,
+            ontime="42 s",
+            bkg=bkg_3d_custom("asymmetric", "ALTAZ"),
+            geom=WcsGeom.create(npix=(3, 3), binsz=4, axes=[axis], skydir=position),
+        )
+
+
 def test_make_edisp_kernel_map():
     migra = MapAxis.from_edges(np.linspace(0.5, 1.5, 50), unit="", name="migra")
     etrue = MapAxis.from_energy_bounds(0.5, 2, 6, unit="TeV", name="energy_true")
@@ -301,7 +327,7 @@ def test_make_edisp_kernel_map():
     pointing = SkyCoord(0, 0, frame="icrs", unit="deg")
     edispmap = make_edisp_kernel_map(edisp, pointing, geom)
 
-    kernel = edispmap.get_edisp_kernel(pointing)
+    kernel = edispmap.get_edisp_kernel(position=pointing)
     assert_allclose(kernel.pdf_matrix[:, 0], (1.0, 1.0, 0.0, 0.0, 0.0, 0.0), atol=1e-14)
     assert_allclose(kernel.pdf_matrix[:, 1], (0.0, 0.0, 1.0, 1.0, 0.0, 0.0), atol=1e-14)
     assert_allclose(kernel.pdf_matrix[:, 2], (0.0, 0.0, 0.0, 0.0, 1.0, 1.0), atol=1e-14)

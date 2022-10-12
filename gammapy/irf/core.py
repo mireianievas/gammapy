@@ -1,6 +1,7 @@
 import abc
 import logging
 from copy import deepcopy
+from enum import Enum
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
@@ -13,20 +14,20 @@ from gammapy.utils.interpolation import (
     interpolation_scale,
 )
 from gammapy.utils.scripts import make_path
-from enum import Enum
 from .io import IRF_DL3_HDU_SPECIFICATION, IRF_MAP_HDU_SPECIFICATION, gadf_is_pointlike
 
 log = logging.getLogger(__name__)
 
 
 class FoVAlignment(str, Enum):
-    '''
+    """
     Orientation of the Field of View Coordinate System
 
     Currently, only two possible alignments are supported: alignment with
     the horizontal coordinate system (ALTAZ) and alignment with the equatorial
     coordinate system (RADEC).
-    '''
+    """
+
     ALTAZ = "ALTAZ"
     RADEC = "RADEC"
 
@@ -74,7 +75,10 @@ class IRF(metaclass=abc.ABCMeta):
         if isinstance(data, u.Quantity):
             self.data = data.value
             if not self.default_unit.is_equivalent(data.unit):
-                raise ValueError(f"Error: {data.unit} is not an allowed unit. {self.tag} requires {self.default_unit} data quantities.")
+                raise ValueError(
+                    f"Error: {data.unit} is not an allowed unit. {self.tag} "
+                    f"requires {self.default_unit} data quantities."
+                )
             else:
                 self._unit = data.unit
         else:
@@ -224,7 +228,9 @@ class IRF(metaclass=abc.ABCMeta):
             IRF with new unit and converted data
         """
         data = self.quantity.to_value(unit)
-        return self.__class__(self.axes, data = data, meta = self.meta, interp_kwargs = self.interp_kwargs)
+        return self.__class__(
+            self.axes, data=data, meta=self.meta, interp_kwargs=self.interp_kwargs
+        )
 
     @property
     def axes(self):
@@ -443,12 +449,16 @@ class IRF(metaclass=abc.ABCMeta):
         irf : `IRF`
             IRF class.
         """
-        axes = MapAxes.from_table(table=table, format=format)[cls.required_axes]
+        axes = MapAxes.from_table(table=table, format=format)
+        axes = axes[cls.required_axes]
         column_name = IRF_DL3_HDU_SPECIFICATION[cls.tag]["column_name"]
         data = table[column_name].quantity[0].transpose()
 
         return cls(
-            axes=axes, data=data.value, meta=table.meta, unit=data.unit,
+            axes=axes,
+            data=data.value,
+            meta=table.meta,
+            unit=data.unit,
             is_pointlike=gadf_is_pointlike(table.meta),
             fov_alignment=table.meta.get("FOVALIGN", "RADEC"),
         )
@@ -546,6 +556,68 @@ class IRF(metaclass=abc.ABCMeta):
             data=data, axes=axes, meta=self.meta.copy(), unit=self.unit
         )
 
+    def slice_by_idx(self, slices):
+        """Slice sub IRF from IRF object.
+
+        Parameters
+        ----------
+        slices : dict
+            Dict of axes names and `slice` object pairs. Contains one
+            element for each non-spatial dimension. Axes not specified in the
+            dict are kept unchanged.
+
+        Returns
+        -------
+        sliced : `IRF`
+            Sliced IRF object.
+        """
+        axes = self.axes.slice_by_idx(slices)
+
+        diff = set(self.axes.names).difference(axes.names)
+
+        if diff:
+            diff_slice = {key: value for key, value in slices.items() if key in diff}
+            raise ValueError(f"Integer indexing not supported, got {diff_slice}")
+
+        slices = tuple([slices.get(ax.name, slice(None)) for ax in self.axes])
+        data = self.data[slices]
+        return self.__class__(axes=axes, data=data, unit=self.unit, meta=self.meta)
+
+    def is_allclose(self, other, rtol_axes=1e-3, atol_axes=1e-6, **kwargs):
+        """Compare two data IRFs for equivalency
+
+        Parameters
+        ----------
+        other : `gammapy.irfs.IRF`
+            The irf to compare against
+        rtol_axes : float
+            Relative tolerance for the axes comparison.
+        atol_axes : float
+            Relative tolerance for the axes comparison.
+        **kwargs : dict
+                keywords passed to `numpy.allclose`
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether the IRF is all close.
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
+        if self.data.shape != other.data.shape:
+            return False
+
+        axes_eq = self.axes.is_allclose(other.axes, rtol=rtol_axes, atol=atol_axes)
+        data_eq = np.allclose(self.quantity, other.quantity, **kwargs)
+        return axes_eq and data_eq
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other=other, rtol=1e-3, rtol_axes=1e-6)
+
 
 class IRFMap:
     """IRF map base class for DL4 instrument response functions"""
@@ -610,7 +682,7 @@ class IRFMap:
         """Get nearest valid position"""
         is_valid = np.nan_to_num(self.mask_safe_image.get_by_coord(position))[0]
 
-        if not is_valid:
+        if not is_valid and np.any(self.mask_safe_image > 0):
             log.warning(
                 f"Position {position} is outside "
                 "valid IRF map range, using nearest IRF defined within"

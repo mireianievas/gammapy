@@ -16,12 +16,13 @@ from regions import (
     PointSkyRegion,
     RectangleSkyRegion,
 )
+import matplotlib.pyplot as plt
 from gammapy.maps import Map, WcsGeom
 from gammapy.modeling import Parameter
+from gammapy.modeling.covariance import copy_covariance
 from gammapy.utils.gauss import Gauss2DPDF
 from gammapy.utils.scripts import make_path
 from .core import ModelBase
-
 
 __all__ = [
     "ConstantFluxSpatialModel",
@@ -42,12 +43,11 @@ log = logging.getLogger(__name__)
 MAX_OVERSAMPLING = 200
 
 
-
 def compute_sigma_eff(lon_0, lat_0, lon, lat, phi, major_axis, e):
     """Effective radius, used for the evaluation of elongated models"""
     phi_0 = position_angle(lon_0, lat_0, lon, lat)
     d_phi = phi - phi_0
-    minor_axis = Angle(major_axis * np.sqrt(1 - e ** 2))
+    minor_axis = Angle(major_axis * np.sqrt(1 - e**2))
 
     a2 = (major_axis * np.sin(d_phi)) ** 2
     b2 = (minor_axis * np.cos(d_phi)) ** 2
@@ -125,17 +125,12 @@ class SpatialModel(ModelBase):
     def position_error(self):
         """Get 95% containment position error as (`~regions.EllipseSkyRegion`)"""
         if self.covariance is None:
-            return EllipseSkyRegion(
-                center=self.position,
-                height=np.nan * u.deg,
-                width=np.nan * u.deg,
-                angle=np.nan * u.deg,
-            )
+            raise ValueError("No position error information available.")
 
         pars = self.parameters
         sub_covar = self.covariance.get_subcovariance(["lon_0", "lat_0"]).data.copy()
         cos_lat = np.cos(self.lat_0.quantity.to_value("rad"))
-        sub_covar[0, 0] *= cos_lat ** 2.0
+        sub_covar[0, 0] *= cos_lat**2.0
         sub_covar[0, 1] *= cos_lat
         sub_covar[1, 0] *= cos_lat
         eig_vals, eig_vecs = np.linalg.eig(sub_covar)
@@ -232,7 +227,7 @@ class SpatialModel(ModelBase):
             upsampled_geom = wcs_geom.upsample(oversampling_factor, axis_name=None)
 
             # assume the upsampled solid angles are approximately factor**2 smaller
-            values = self.evaluate_geom(upsampled_geom) / oversampling_factor ** 2
+            values = self.evaluate_geom(upsampled_geom) / oversampling_factor**2
             upsampled = Map.from_geom(upsampled_geom, unit=values.unit)
             upsampled += values
 
@@ -343,8 +338,6 @@ class SpatialModel(ModelBase):
         ax : `~matplotlib.axes.Axes`, optional
             Axis
         """
-        import matplotlib.pyplot as plt
-
         # plot center position
         lon, lat = self.lon_0.value, self.lat_0.value
 
@@ -576,7 +569,7 @@ class GaussianSpatialModel(SpatialModel):
             Model outline.
         """
 
-        minor_axis = Angle(self.sigma.quantity * np.sqrt(1 - self.e.quantity ** 2))
+        minor_axis = Angle(self.sigma.quantity * np.sqrt(1 - self.e.quantity**2))
         return EllipseSkyRegion(
             center=self.position,
             height=2 * x_sigma * self.sigma.quantity,
@@ -664,7 +657,7 @@ class GeneralizedGaussianSpatialModel(SpatialModel):
             Model outline.
         """
 
-        minor_axis = Angle(self.r_0.quantity * np.sqrt(1 - self.e.quantity ** 2))
+        minor_axis = Angle(self.r_0.quantity * np.sqrt(1 - self.e.quantity**2))
         return EllipseSkyRegion(
             center=self.position,
             height=2 * x_r_0 * self.r_0.quantity,
@@ -731,7 +724,7 @@ class DiskSpatialModel(SpatialModel):
     @staticmethod
     def _evaluate_norm_factor(r_0, e):
         """Compute the normalization factor."""
-        semi_minor = r_0 * np.sqrt(1 - e ** 2)
+        semi_minor = r_0 * np.sqrt(1 - e**2)
 
         def integral_fcn(x, a, b):
             A = 1 / np.sin(a) ** 2
@@ -773,7 +766,7 @@ class DiskSpatialModel(SpatialModel):
 
     def to_region(self, **kwargs):
         """Model outline (`~regions.EllipseSkyRegion`)."""
-        minor_axis = Angle(self.r_0.quantity * np.sqrt(1 - self.e.quantity ** 2))
+        minor_axis = Angle(self.r_0.quantity * np.sqrt(1 - self.e.quantity**2))
         return EllipseSkyRegion(
             center=self.position,
             height=2 * self.r_0.quantity,
@@ -832,14 +825,14 @@ class ShellSpatialModel(SpatialModel):
         sep = angular_separation(lon, lat, lon_0, lat_0)
         radius_out = radius + width
 
-        norm = 3 / (2 * np.pi * (radius_out ** 3 - radius ** 3))
+        norm = 3 / (2 * np.pi * (radius_out**3 - radius**3))
 
         with np.errstate(invalid="ignore"):
             # np.where and np.select do not work with quantities, so we use the
             # workaround with indexing
-            value = np.sqrt(radius_out ** 2 - sep ** 2)
+            value = np.sqrt(radius_out**2 - sep**2)
             mask = sep < radius
-            value[mask] = (value - np.sqrt(radius ** 2 - sep ** 2))[mask]
+            value[mask] = (value - np.sqrt(radius**2 - sep**2))[mask]
             value[sep > radius_out] = 0
 
         return norm * value
@@ -907,14 +900,14 @@ class Shell2SpatialModel(SpatialModel):
         sep = angular_separation(lon, lat, lon_0, lat_0)
         r_in = (1 - eta) * r_0
 
-        norm = 3 / (2 * np.pi * (r_0 ** 3 - r_in ** 3))
+        norm = 3 / (2 * np.pi * (r_0**3 - r_in**3))
 
         with np.errstate(invalid="ignore"):
             # np.where and np.select do not work with quantities, so we use the
             # workaround with indexing
-            value = np.sqrt(r_0 ** 2 - sep ** 2)
+            value = np.sqrt(r_0**2 - sep**2)
             mask = sep < r_in
-            value[mask] = (value - np.sqrt(r_in ** 2 - sep ** 2))[mask]
+            value[mask] = (value - np.sqrt(r_in**2 - sep**2))[mask]
             value[sep > r_0] = 0
 
         return norm * value
@@ -960,14 +953,12 @@ class ConstantSpatialModel(SpatialModel):
         """Evaluate model."""
         return value
 
-    @staticmethod
-    def to_region(**kwargs):
-        """Model outline (`~regions.EllipseSkyRegion`)."""
-        return EllipseSkyRegion(
-            center=SkyCoord(np.nan * u.deg, np.nan * u.deg),
-            height=np.nan * u.deg,
-            width=np.nan * u.deg,
-            angle=np.nan * u.deg,
+    def to_region(self, **kwargs):
+        """Model outline (`~regions.RectangleSkyRegion`)."""
+        return RectangleSkyRegion(
+            center=SkyCoord(0 * u.deg, 0 * u.deg, frame=self.frame),
+            height=180 * u.deg,
+            width=360 * u.deg,
             **kwargs,
         )
 
@@ -1007,14 +998,12 @@ class ConstantFluxSpatialModel(SpatialModel):
         """Evaluate model."""
         return Map.from_geom(geom=geom, data=1)
 
-    @staticmethod
-    def to_region(**kwargs):
-        """Model outline (`~regions.EllipseSkyRegion`)."""
-        return EllipseSkyRegion(
-            center=SkyCoord(np.nan * u.deg, np.nan * u.deg),
-            height=np.nan * u.deg,
-            width=np.nan * u.deg,
-            angle=np.nan * u.deg,
+    def to_region(self, **kwargs):
+        """Model outline (`~regions.RectangleSkyRegion`)."""
+        return RectangleSkyRegion(
+            center=SkyCoord(0 * u.deg, 0 * u.deg, frame=self.frame),
+            height=180 * u.deg,
+            width=360 * u.deg,
             **kwargs,
         )
 
@@ -1035,6 +1024,11 @@ class TemplateSpatialModel(SpatialModel):
     interp_kwargs : dict
         Interpolation keyword arguments passed to `gammapy.maps.Map.interp_by_coord`.
         Default arguments are {'method': 'linear', 'fill_value': 0}.
+    Filename : str
+        Name of the map file
+    copy_data : bool
+        Create a deepcopy of the map data or directly use the original. True by
+        default, can be turned to False to save memory in case of large maps.
     """
 
     tag = ["TemplateSpatialModel", "template"]
@@ -1046,6 +1040,7 @@ class TemplateSpatialModel(SpatialModel):
         normalize=True,
         interp_kwargs=None,
         filename=None,
+        copy_data=True,
     ):
         if (map.data < 0).any():
             log.warning("Map has negative values. Check and fix this!")
@@ -1068,18 +1063,46 @@ class TemplateSpatialModel(SpatialModel):
             map = map.copy(data=data, unit="sr-1")
 
         if map.unit.is_equivalent(""):
-            map = map.copy(unit="sr-1")
+            map = map.copy(data=map.data, unit="sr-1")
             log.warning("Missing spatial template unit, assuming sr^-1")
 
-        self._map = map.copy()
+        if copy_data:
+            self._map = map.copy()
+        else:
+            self._map = map.copy(data=map.data)
 
         self.meta = {} if meta is None else meta
+
         interp_kwargs = {} if interp_kwargs is None else interp_kwargs
         interp_kwargs.setdefault("method", "linear")
         interp_kwargs.setdefault("fill_value", 0)
+
         self._interp_kwargs = interp_kwargs
         self.filename = filename
         super().__init__()
+
+    @copy_covariance
+    def copy(self, copy_data=False, **kwargs):
+        """Copy model
+
+        Parameters
+        ----------
+        copy_data : bool
+            Whether to copy the data.
+        **kwargs : dict
+            Keyword arguments forwarded to `TemplateSpatialModel`
+
+        Returns
+        -------
+        model : `TemplateSpatialModel`
+            Copied template spatial model.
+        """
+        kwargs.setdefault("map", self.map)
+        kwargs.setdefault("meta", self.meta.copy())
+        kwargs.setdefault("normalize", self.normalize)
+        kwargs.setdefault("interp_kwargs", self._interp_kwargs)
+        kwargs.setdefault("filename", self.filename)
+        return self.__class__(copy_data=copy_data, **kwargs)
 
     @property
     def map(self):
@@ -1116,6 +1139,10 @@ class TemplateSpatialModel(SpatialModel):
         return cls(m, normalize=normalize, filename=filename)
 
     def evaluate(self, lon, lat, energy=None):
+        """Evaluate the model at given coordinates.
+        Note that, if the map data assume negative values, these are
+        clipped to zero.
+        """
         coord = {
             "lon": lon.to_value("deg"),
             "lat": lat.to_value("deg"),
@@ -1124,6 +1151,7 @@ class TemplateSpatialModel(SpatialModel):
             coord["energy_true"] = energy
 
         val = self.map.interp_by_coord(coord, **self._interp_kwargs)
+        val = np.clip(val, 0, a_max=None)
         return u.Quantity(val, self.map.unit, copy=False)
 
     @property
@@ -1164,7 +1192,7 @@ class TemplateSpatialModel(SpatialModel):
         elif os.path.isfile(self.filename) and not overwrite:
             log.warning("Template file already exits, and overwrite is False")
         else:
-            self.map.write(self.filename)
+            self.map.write(self.filename, overwrite=overwrite)
 
     def to_region(self, **kwargs):
         """Model outline from template map boundary (`~regions.RectangleSkyRegion`)."""

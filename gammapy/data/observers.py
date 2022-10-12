@@ -1,7 +1,7 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Location of gamma-ray observatories."""
-from astropy.coordinates import EarthLocation
 import astropy.units as u
+from astropy.coordinates import EarthLocation
 
 __all__ = ["observatory_locations"]
 
@@ -35,8 +35,10 @@ Available observatories (alphabetical order):
 - ``milagro`` for MILAGRO, see
   `Wikipedia <https://en.wikipedia.org/wiki/Milagro_(experiment)>`__)
 - ``veritas`` for VERITAS, see
-  `Website <https://veritas.sao.arizona.edu/>`__ and `Wikipedia <https://en.wikipedia.org/wiki/VERITAS>`__
-- ``whipple`` for WHIPPLE, see `Wikipedia <https://en.wikipedia.org/wiki/Fred_Lawrence_Whipple_Observatory>`__
+  `Website <https://veritas.sao.arizona.edu/>`__ and
+  `Wikipedia <https://en.wikipedia.org/wiki/VERITAS>`__
+- ``whipple`` for WHIPPLE, see
+  `Wikipedia <https://en.wikipedia.org/wiki/Fred_Lawrence_Whipple_Observatory>`__
 
 Examples
 --------
@@ -97,10 +99,12 @@ observatory_locations["whipple"] = EarthLocation(
 
 # communication with ASTRI Project Manager
 observatory_locations["astri"] = EarthLocation(
-    lon="-16d30m20.99s", lat="28d17m60.0s", height="2370m"
+    lon="-16d30m20.99s", lat="28d18m00.0s", height="2370m"
 )
 
 # coordinates from fact-tools (based on google earth)
 observatory_locations["fact"] = EarthLocation(
-    lat=28.761647 * u.deg, lon=-17.891116 * u.deg, height=2200 * u.m,
+    lat=28.761647 * u.deg,
+    lon=-17.891116 * u.deg,
+    height=2200 * u.m,
 )

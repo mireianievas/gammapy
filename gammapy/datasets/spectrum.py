@@ -1,9 +1,10 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
-import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
-from .utils import get_axes, get_figure
+from .utils import get_axes
 
 __all__ = ["SpectrumDatasetOnOff", "SpectrumDataset"]
 
@@ -45,18 +46,17 @@ class PlotMixin:
         >>> #Creating a spectral dataset
         >>> from gammapy.datasets import SpectrumDatasetOnOff
         >>> from gammapy.modeling.models import PowerLawSpectralModel, SkyModel
-        >>> dataset = SpectrumDatasetOnOff.read(f"$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits")
+        >>> filename = "$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits"
+        >>> dataset = SpectrumDatasetOnOff.read(filename)
         >>> p = PowerLawSpectralModel()
         >>> dataset.models = SkyModel(spectral_model=p)
-        >>> #optional configurations
+        >>> # optional configurations
         >>> kwargs_excess = {"color": "blue", "markersize":8, "marker":'s', }
         >>> kwargs_npred_signal = {"color": "black", "ls":"--"}
-        >>> kwargs_spectrum = {"kwargs_excess":kwargs_excess, "kwargs_npred_signal":kwargs_npred_signal}
-        >>> kwargs_residuals = {"color": "black", "markersize":4, "marker":'s', } #optional configuration
-        >>> dataset.plot_fit(kwargs_residuals=kwargs_residuals, kwargs_spectrum=kwargs_spectrum)  # doctest: +SKIP
+        >>> kwargs_spectrum = {"kwargs_excess":kwargs_excess, "kwargs_npred_signal":kwargs_npred_signal}  # noqa: E501
+        >>> kwargs_residuals = {"color": "black", "markersize":4, "marker":'s', }  # optional configuration  # noqa: E501
+        >>> dataset.plot_fit(kwargs_residuals=kwargs_residuals, kwargs_spectrum=kwargs_spectrum)  # doctest: +SKIP  noqa: E501
         """
-        from matplotlib.gridspec import GridSpec
-
         gs = GridSpec(7, 1)
         ax_spectrum, ax_residuals = get_axes(
             ax_spectrum,
@@ -137,16 +137,17 @@ class PlotMixin:
 
         Examples
         --------
-        >>> #Reading a spectral dataset
+        >>> # Reading a spectral dataset
         >>> from gammapy.datasets import SpectrumDatasetOnOff
-        >>> dataset = SpectrumDatasetOnOff.read(f"$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits")
+        >>> filename = "$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits"
+        >>> dataset = SpectrumDatasetOnOff.read(filename)
         >>> dataset.mask_fit = dataset.mask_safe.copy()
-        >>> dataset.mask_fit.data[40:46]=False #setting dummy mask_fit for illustration
-        >>> #Plot the masks on top of the counts histogram
+        >>> dataset.mask_fit.data[40:46] = False  # setting dummy mask_fit for illustration
+        >>> # Plot the masks on top of the counts histogram
         >>> kwargs_safe = {"color":"green", "alpha":0.2} #optinonal arguments to configure
         >>> kwargs_fit = {"color":"pink", "alpha":0.2}
-        >>> ax=dataset.plot_counts() # doctest: +SKIP
-        >>> dataset.plot_masks(ax=ax, kwargs_fit=kwargs_fit, kwargs_safe=kwargs_safe)  # doctest: +SKIP
+        >>> ax=dataset.plot_counts()  # doctest: +SKIP
+        >>> dataset.plot_masks(ax=ax, kwargs_fit=kwargs_fit, kwargs_safe=kwargs_safe)  # doctest: +SKIP  # noqa: E501
         """
 
         kwargs_fit = kwargs_fit or {}
@@ -171,6 +172,8 @@ class PlotMixin:
     ):
         """Plot excess and predicted signal.
 
+        The error bars are computed with a symmetric assumption on the excess.
+
         Parameters
         ----------
         ax : `~matplotlib.axes.Axes`
@@ -194,21 +197,25 @@ class PlotMixin:
         >>> #Creating a spectral dataset
         >>> from gammapy.datasets import SpectrumDatasetOnOff
         >>> from gammapy.modeling.models import PowerLawSpectralModel, SkyModel
-        >>> dataset = SpectrumDatasetOnOff.read(f"$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits")
+        >>> filename = "$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs23523.fits"
+        >>> dataset = SpectrumDatasetOnOff.read(filename)
         >>> p = PowerLawSpectralModel()
         >>> dataset.models = SkyModel(spectral_model=p)
         >>> #Plot the excess in blue and the npred in black dotted lines
         >>> kwargs_excess = {"color": "blue", "markersize":8, "marker":'s', }
         >>> kwargs_npred_signal = {"color": "black", "ls":"--"}
-        >>> dataset.plot_excess(kwargs_excess=kwargs_excess, kwargs_npred_signal=kwargs_npred_signal)  # doctest: +SKIP
+        >>> dataset.plot_excess(kwargs_excess=kwargs_excess, kwargs_npred_signal=kwargs_npred_signal)  # doctest: +SKIP  # noqa: E501
         """
         kwargs_excess = kwargs_excess or {}
         kwargs_npred_signal = kwargs_npred_signal or {}
 
+        # Determine the uncertainty on the excess
+        yerr = self._counts_statistic.error
+
         plot_kwargs = kwargs.copy()
         plot_kwargs.update(kwargs_excess)
         plot_kwargs.setdefault("label", "Excess counts")
-        ax = self.excess.plot(ax, yerr=np.sqrt(np.abs(self.excess.data)), **plot_kwargs)
+        ax = self.excess.plot(ax, yerr=yerr, **plot_kwargs)
 
         plot_kwargs = kwargs.copy()
         plot_kwargs.update(kwargs_npred_signal)
@@ -218,21 +225,16 @@ class PlotMixin:
         ax.legend(numpoints=1)
         return ax
 
-    def peek(self, fig=None):
+    def peek(self, figsize=(16, 4)):
         """Quick-look summary plots.
 
         Parameters
         ----------
-        fig : `~matplotlib.figure.Figure`
-            Figure to add AxesSubplot on.
+        figsize : tuple
+            Size of the figure.
 
-        Returns
-        -------
-        ax1, ax2, ax3 : `~matplotlib.axes.AxesSubplot`
-            Counts, effective area and energy dispersion subplots.
         """
-        fig = get_figure(fig, 16, 4)
-        ax1, ax2, ax3 = fig.subplots(1, 3)
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
 
         ax1.set_title("Counts")
         self.plot_counts(ax1)
@@ -248,27 +250,10 @@ class PlotMixin:
             kernel = self.edisp.get_edisp_kernel()
             kernel.plot_matrix(ax=ax3, add_cbar=True)
 
-        return ax1, ax2, ax3
-
 
 class SpectrumDataset(PlotMixin, MapDataset):
     stat_type = "cash"
     tag = "SpectrumDataset"
-
-    def write(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
-    def read(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
-    def to_hdulist(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
-    def from_hdulist(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
-    def from_dict(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
 
     def cutout(self, *args, **kwargs):
         raise NotImplementedError("Method not supported on a spectrum dataset")
@@ -290,27 +275,29 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
     def plot_residuals_spatial(self, *args, **kwargs):
         raise NotImplementedError("Method not supported on a spectrum dataset")
 
-    def to_hdulist(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
-    def from_hdulist(self, *args, **kwargs):
-        raise NotImplementedError("Method not supported on a spectrum dataset")
-
     @classmethod
-    def read(cls, filename):
+    def read(cls, filename, format="ogip", **kwargs):
         """Read from file
 
-        For now, filename is assumed to the name of a PHA file where BKG file, ARF, and RMF names
+        For OGIP formats, filename is assumed to the name of a PHA file where
+        BKG file, ARF, and RMF names
         must be set in the PHA header and be present in the same folder.
+        For details, see `OGIPDatasetReader.read`
 
-        For formats specs see `OGIPDatasetReader.read`
+        For the GADF format, a MapDataset serialisation is used
 
         Parameters
         ----------
         filename : `~pathlib.Path` or str
             OGIP PHA file to read
+        format : {"ogip", "ogip-sherpa", "gadf"}
+            Format to use.
+        kwargs : arguments passed to `MapDataset.read`
         """
         from .io import OGIPDatasetReader
+
+        if format == "gadf":
+            return super().read(filename, format="gadf", **kwargs)
 
         reader = OGIPDatasetReader(filename=filename)
         return reader.read()
@@ -318,9 +305,9 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
     def write(self, filename, overwrite=False, format="ogip"):
         """Write spectrum dataset on off to file.
 
-        Currently only the OGIP format is supported
-
-        For formats specs see `OGIPDatasetWriter`
+        Can be serialised either as a `MapDataset` with a `RegionGeom`
+        following the GADF specifications, or as per the OGIP format.
+        For OGIP formats specs see `OGIPDatasetWriter`
 
         Parameters
         ----------
@@ -328,15 +315,20 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
             Filename to write to.
         overwrite : bool
             Overwrite existing file.
-        format : {"ogip", "ogip-sherpa"}
+        format : {"ogip", "ogip-sherpa", "gadf"}
             Format to use.
         """
         from .io import OGIPDatasetWriter
 
-        writer = OGIPDatasetWriter(
-            filename=filename, format=format, overwrite=overwrite
-        )
-        writer.write(self)
+        if format == "gadf":
+            super().write(filename=filename, overwrite=overwrite)
+        elif format in ["ogip", "ogip-sherpa"]:
+            writer = OGIPDatasetWriter(
+                filename=filename, format=format, overwrite=overwrite
+            )
+            writer.write(self)
+        else:
+            raise ValueError(f"{format} is not a valid serialisation format")
 
     @classmethod
     def from_dict(cls, data, **kwargs):

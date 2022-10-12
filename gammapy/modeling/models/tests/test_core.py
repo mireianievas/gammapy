@@ -3,13 +3,8 @@ import pytest
 from numpy.testing import assert_allclose
 import astropy.units as u
 from gammapy.modeling import Parameter, Parameters
-from gammapy.modeling.models import (
-    Model,
-    ModelBase,
-    Models,
-    SkyModel,
-)
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.modeling.models import Model, ModelBase, Models, SkyModel
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 class MyModel(ModelBase):
@@ -204,7 +199,6 @@ def test_set_parameters_from_table():
 
 
 @requires_data()
-@requires_dependency("matplotlib")
 def test_plot_models(caplog):
     models = Models.read("$GAMMAPY_DATA/tests/models/gc_example_models.yaml")
 
@@ -235,3 +229,26 @@ def test_plot_models(caplog):
     assert "Skipping model m2 - no spatial component present" in [
         _.message for _ in caplog.records
     ]
+
+
+def test_positions():
+    p1 = Model.create(
+        "pl",
+        model_type="spectral",
+    )
+    g1 = Model.create("gauss", model_type="spatial")
+    m1 = SkyModel(spectral_model=p1, spatial_model=g1, name="m1")
+    g3 = Model.create("gauss", model_type="spatial", frame="galactic")
+    m3 = SkyModel(spectral_model=p1, spatial_model=g3, name="m3")
+    models = Models([m1, m3])
+    pos = models.positions
+    assert_allclose(pos.galactic[0].l.value, 96.337, rtol=1e-3)
+
+
+def test_parameter_name():
+    with pytest.raises(RuntimeError):
+
+        class MyTestModel:
+            par = Parameter("wrong-name", value=3)
+
+        _ = MyTestModel()

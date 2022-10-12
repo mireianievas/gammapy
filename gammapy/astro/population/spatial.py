@@ -56,11 +56,12 @@ class Paczynski1990(Fittable1DModel):
     @staticmethod
     def evaluate(r, amplitude, r_exp):
         """Evaluate model."""
-        return amplitude * r_exp ** -2 * np.exp(-r / r_exp)
+        return amplitude * r_exp**-2 * np.exp(-r / r_exp)
 
 
 class CaseBattacharya1998(Fittable1DModel):
-    r"""Radial distribution of the surface density of supernova remnants in the galaxy - Case & Battacharya 1998.
+    r"""Radial distribution of the surface density of supernova remnants in the galaxy
+    - Case & Battacharya 1998.
 
     .. math::
         f(r) = A \left( \frac{r}{r_{\odot}} \right) ^ \alpha \exp
@@ -188,7 +189,8 @@ class YusifovKucuk2004B(Fittable1DModel):
 
 
 class FaucherKaspi2006(Fittable1DModel):
-    r"""Radial distribution of the birth surface density of pulsars in the galaxy - Faucher-Giguere & Kaspi 2006.
+    r"""Radial distribution of the birth surface density of pulsars in the galaxy
+     - Faucher-Giguere & Kaspi 2006.
 
     .. math::
         f(r) = A \frac{1}{\sqrt{2 \pi} \sigma} \exp
@@ -223,7 +225,7 @@ class FaucherKaspi2006(Fittable1DModel):
     def evaluate(r, amplitude, r_0, sigma):
         """Evaluate model."""
         term1 = 1.0 / np.sqrt(2 * np.pi * sigma)
-        term2 = np.exp(-((r - r_0) ** 2) / (2 * sigma ** 2))
+        term2 = np.exp(-((r - r_0) ** 2) / (2 * sigma**2))
         return amplitude * term1 * term2
 
 

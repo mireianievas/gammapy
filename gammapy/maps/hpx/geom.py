@@ -51,7 +51,8 @@ class HpxGeom(Geom):
         either a single nside value or a vector of nside values
         defining the pixel size for each image plane.  If nside is not
         a scalar then its dimensionality should match that of the
-        non-spatial axes.
+        non-spatial axes. If nest is True, nside must be a power of 2,
+        less than 2**30.
     nest : bool
         True -> 'NESTED', False -> 'RING' indexing scheme
     frame : str
@@ -70,8 +71,9 @@ class HpxGeom(Geom):
     is_region = False
 
     def __init__(self, nside, nest=True, frame="icrs", region=None, axes=None):
+        from healpy.pixelfunc import check_nside
 
-        # FIXME: Require NSIDE to be power of two when nest=True
+        check_nside(nside, nest=nest)
 
         self._nside = np.array(nside, ndmin=1)
         self._axes = MapAxes.from_default(axes, n_spatial_axes=1)
@@ -83,9 +85,8 @@ class HpxGeom(Geom):
                 "with the axes argument."
             )
 
-        self._nest = nest
         self._frame = frame
-
+        self._nest = nest
         self._ipix = None
         self._region = region
         self._create_lookup(region)
@@ -389,7 +390,7 @@ class HpxGeom(Geom):
     @property
     def npix_max(self):
         """Max. number of pixels"""
-        maxpix = 12 * self.nside ** 2
+        maxpix = 12 * self.nside**2
         return maxpix * np.ones(self.shape_axes, dtype=int)
 
     @property
@@ -807,7 +808,8 @@ class HpxGeom(Geom):
         ----------
         nside : int or `~numpy.ndarray`
             HEALPix NSIDE parameter.  This parameter sets the size of
-            the spatial pixels in the map.
+            the spatial pixels in the map. If nest is True, nside must be a
+            power of 2, less than 2**30.
         binsz : float or `~numpy.ndarray`
             Approximate pixel size in degrees.  An NSIDE will be
             chosen that corresponds to a pixel size closest to this
@@ -838,10 +840,10 @@ class HpxGeom(Geom):
         --------
         >>> from gammapy.maps import HpxGeom, MapAxis
         >>> axis = MapAxis.from_bounds(0,1,2)
-        >>> geom = HpxGeom.create(nside=16)
-        >>> geom = HpxGeom.create(binsz=0.1, width=10.0)
-        >>> geom = HpxGeom.create(nside=64, width=10.0, axes=[axis])
-        >>> geom = HpxGeom.create(nside=[32,64], width=10.0, axes=[axis])
+        >>> geom = HpxGeom.create(nside=16) # doctest: +SKIP
+        >>> geom = HpxGeom.create(binsz=0.1, width=10.0) # doctest: +SKIP
+        >>> geom = HpxGeom.create(nside=64, width=10.0, axes=[axis]) # doctest: +SKIP
+        >>> geom = HpxGeom.create(nside=[32,64], width=10.0, axes=[axis]) # doctest: +SKIP
         """
         if nside is None and binsz is None:
             raise ValueError("Either nside or binsz must be defined.")
@@ -1377,27 +1379,48 @@ class HpxGeom(Geom):
             f"\tcenter     : {lon:.1f} deg, {lat:.1f} deg\n"
         )
 
-    def __eq__(self, other):
+    def is_allclose(self, other, rtol_axes=1e-6, atol_axes=1e-6):
+        """Compare two data IRFs for equivalency
+
+        Parameters
+        ----------
+        other :  `HpxGeom`
+            Geom to compare against
+        rtol_axes : float
+            Relative tolerance for the axes comparison.
+        atol_axes : float
+            Relative tolerance for the axes comparison.
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether the geometry is all close.
+        """
         if not isinstance(other, self.__class__):
-            return NotImplemented
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
 
         if self.is_allsky and not other.is_allsky:
-            return NotImplemented
+            return False
 
-        # check overall shape and axes compatibility
         if self.data_shape != other.data_shape:
             return False
 
-        for axis, otheraxis in zip(self.axes, other.axes):
-            if axis != otheraxis:
-                return False
+        axes_eq = self.axes.is_allclose(other.axes, rtol=rtol_axes, atol=atol_axes)
 
-        return (
+        hpx_eq = (
             self.nside == other.nside
             and self.frame == other.frame
             and self.order == other.order
             and self.nest == other.nest
         )
+
+        return axes_eq and hpx_eq
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other=other)
 
     def __ne__(self, other):
         return not self.__eq__(other)

@@ -37,6 +37,14 @@ p {
   color: white;
 }
 
+#navbar-icon-links i.fa-twitter-square::before {
+  color: white;
+}
+
+#navbar-icon-links i.fa-slack::before {
+  color: white;
+}
+
 .navbar-light .navbar-toggler-icon {
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cpath stroke='white' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
 }
@@ -300,4 +308,22 @@ table.docutils {
 
 .tutorial-card .badge:hover {
   background-color: grey;
+}
+
+.sphx-glr-footer {
+  text-align: left  !important;
+}
+
+.sphx-glr-download a {
+background-color: #d9edf7 !important;
+border: 1px solid #bce8f1 !important;
+background-image: none !important;
+}
+
+.sphx-glr-download code {
+color: #3a87ad !important;
+}
+
+.sphx-glr-download a:hover {
+background-color: #d9edf7 !important;
 }

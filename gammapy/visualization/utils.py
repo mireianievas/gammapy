@@ -1,13 +1,23 @@
 import numpy as np
-from gammapy.maps import MapAxis
-from gammapy.maps.utils import edges_from_lo_hi
 from scipy.interpolate import CubicSpline
+import matplotlib.pyplot as plt
 
 __all__ = [
     "plot_contour_line",
     "plot_spectrum_datasets_off_regions",
     "plot_theta_squared_table",
 ]
+
+
+ARTIST_TO_LINE_PROPERTIES = {
+    "color": "markeredgecolor",
+    "edgecolor": "markeredgecolor",
+    "ec": "markeredgecolor",
+    "facecolor": "markerfacecolor",
+    "fc": "markerfacecolor",
+    "linewidth": "markerwidth",
+    "lw": "markerwidth",
+}
 
 
 def plot_spectrum_datasets_off_regions(
@@ -17,7 +27,7 @@ def plot_spectrum_datasets_off_regions(
 
     Parameters
     ----------
-    datasets : `~gammapy.datasets.Datasets` of or sequence of `~gammapy.datasets.SpectrumDatasetOnOff`
+    datasets : `~gammapy.datasets.Datasets` or list of `~gammapy.datasets.SpectrumDatasetOnOff`
         List of spectrum on-off datasets.
     ax : `~astropy.visualization.wcsaxes.WCSAxes`
         Axes object to plot on.
@@ -51,7 +61,7 @@ def plot_spectrum_datasets_off_regions(
 
     Plot that cycles through colors (``edgecolor``) and line styles together::
 
-        plot_spectrum_datasets_off_regions(datasets, ax, prop_cycle=plt.cycler(color=list('rgb'), ls=['--', '-', ':']))
+        plot_spectrum_datasets_off_regions(datasets, ax, prop_cycle=plt.cycler(color=list('rgb'), ls=['--', '-', ':']))  # noqa: E501
 
     Plot that uses a modified `~matplotlib.rcParams`, has two legend columns, static and
     dynamic colors, but only shows labels for ``datasets1`` and ``datasets2``. Note that
@@ -62,7 +72,6 @@ def plot_spectrum_datasets_off_regions(
         plot_spectrum_datasets_off_regions(datasets2, ax, legend=True, legend_kwargs=dict(ncol=2))
         plot_spectrum_datasets_off_regions(datasets3, ax, legend=False, edgecolor='magenta')
     """
-    import matplotlib.pyplot as plt
     from matplotlib.legend_handler import HandlerPatch, HandlerTuple
     from matplotlib.patches import CirclePolygon, Patch
 
@@ -73,15 +82,14 @@ def plot_spectrum_datasets_off_regions(
     legend_kwargs = legend_kwargs or {}
     handles, labels = [], []
 
-    kwargs.setdefault("facecolor", "none")
     prop_cycle = kwargs.pop("prop_cycle", plt.rcParams["axes.prop_cycle"])
-    plot_kwargs = kwargs.copy()
 
     for props, dataset in zip(prop_cycle(), datasets):
-        props = props.copy()
-        color = props.pop("color", plt.rcParams["patch.edgecolor"])
-        plot_kwargs["edgecolor"] = kwargs.get("edgecolor", color)
+        plot_kwargs = kwargs.copy()
+        plot_kwargs["facecolor"] = "None"
+        plot_kwargs.setdefault("edgecolor", props.pop("color"))
         plot_kwargs.update(props)
+
         dataset.counts_off.plot_region(ax, **plot_kwargs)
 
         # create proxy artist for the custom legend
@@ -111,12 +119,18 @@ def plot_spectrum_datasets_off_regions(
         legend_kwargs["handler_map"] = {Patch: patch_handler, tuple: tuple_handler}
         ax.legend(handles, labels, **legend_kwargs)
 
+    return ax
+
 
 def plot_contour_line(ax, x, y, **kwargs):
     """Plot smooth curve from contour points"""
+    xf = x
+    yf = y
+
     # close contour
-    xf = np.append(x, x[0])
-    yf = np.append(y, y[0])
+    if not (x[0] == x[-1] and y[0] == y[-1]):
+        xf = np.append(x, x[0])
+        yf = np.append(y, y[0])
 
     # curve parametrization must be strictly increasing
     # so we use the cumulative distance of each point from the first one
@@ -144,17 +158,19 @@ def plot_contour_line(ax, x, y, **kwargs):
 
 
 def plot_theta_squared_table(table):
-    """Plot the theta2 distribution of ON, OFF counts, excess and signifiance in each theta2bin.
+    """Plot the theta2 distribution of counts, excess and signifiance.
 
-    Take the table containing the ON counts, the OFF counts, the acceptance, the off acceptance and the alpha
-    (normalisation between ON and OFF) for each theta2 bin
+    Take the table containing the ON counts, the OFF counts, the acceptance,
+    the off acceptance and the alpha (normalisation between ON and OFF)
+    for each theta2 bin.
 
     Parameters
     ----------
     table : `~astropy.table.Table`
         Required columns: theta2_min, theta2_max, counts, counts_off and alpha
     """
-    import matplotlib.pyplot as plt
+    from gammapy.maps import MapAxis
+    from gammapy.maps.utils import edges_from_lo_hi
 
     theta2_edges = edges_from_lo_hi(
         table["theta2_min"].quantity, table["theta2_max"].quantity
@@ -189,7 +205,7 @@ def plot_theta_squared_table(table):
         x,
         table["excess"],
         xerr=xerr,
-        yerr=(-table["excess_errn"], table["excess_errp"]),
+        yerr=(table["excess_errn"], table["excess_errp"]),
         fmt="+",
         linestyle="None",
         label="Excess",

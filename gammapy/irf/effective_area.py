@@ -2,6 +2,7 @@
 import numpy as np
 import astropy.units as u
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
 from gammapy.maps import MapAxes, MapAxis
 from .core import IRF
 
@@ -46,7 +47,9 @@ class EffectiveAreaTable2D(IRF):
 
     >>> from gammapy.irf import EffectiveAreaTable2D
     >>> from gammapy.maps import MapAxis
-    >>> energy_axis_true = MapAxis.from_energy_bounds("0.1 TeV", "100 TeV", nbin=30, name="energy_true")
+    >>> energy_axis_true = MapAxis.from_energy_bounds(
+            "0.1 TeV", "100 TeV", nbin=30, name="energy_true"
+        )
     >>> offset_axis = MapAxis.from_bounds(0, 5, nbin=4, name="offset")
     >>> aeff = EffectiveAreaTable2D(axes=[energy_axis_true, offset_axis], data=1e10, unit="cm2")
     >>> print(aeff)
@@ -83,8 +86,6 @@ class EffectiveAreaTable2D(IRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         if offset is None:
@@ -121,8 +122,6 @@ class EffectiveAreaTable2D(IRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         if energy is None:
@@ -149,8 +148,6 @@ class EffectiveAreaTable2D(IRF):
 
     def plot(self, ax=None, add_cbar=True, **kwargs):
         """Plot effective area image."""
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         energy = self.axes["energy_true"]
@@ -179,9 +176,14 @@ class EffectiveAreaTable2D(IRF):
         return ax
 
     def peek(self, figsize=(15, 5)):
-        """Quick-look summary plots."""
-        import matplotlib.pyplot as plt
+        """Quick-look summary plots.
 
+        Parameters
+        ----------
+        figsize : tuple
+            Size of the figure.
+
+        """
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
         self.plot(ax=axes[2])
         self.plot_energy_dependence(ax=axes[0])
@@ -197,7 +199,7 @@ class EffectiveAreaTable2D(IRF):
         https://ui.adsabs.harvard.edu/abs/2010MNRAS.402.1342A .
 
         .. math::
-            A_{eff}(E) = g_1 \left(\frac{E}{\mathrm{MeV}}\right)^{-g_2}\exp{\left(-\frac{g_3}{E}\right)}
+            A_{eff}(E) = g_1 \left(\frac{E}{\mathrm{MeV}}\right)^{-g_2}\exp{\left(-\frac{g_3}{E}\right)}  # noqa: E501
 
         This method does not model the offset dependence of the effective area,
         but just assumes that it is constant.

@@ -3,6 +3,8 @@ import logging
 import numpy as np
 import astropy.units as u
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 from gammapy.maps import MapAxes, MapAxis
 from .core import IRF
 from .io import gadf_is_pointlike
@@ -73,7 +75,10 @@ class BackgroundIRF(IRF):
             data = data.transpose()
 
         return cls(
-            axes=axes, data=data.value, meta=table.meta, unit=data.unit,
+            axes=axes,
+            data=data.value,
+            meta=table.meta,
+            unit=data.unit,
             is_pointlike=gadf_is_pointlike(table.meta),
             fov_alignment=table.meta.get("FOVALIGN", "RADEC"),
         )
@@ -91,7 +96,7 @@ class Background3D(BackgroundIRF):
     data : `~np.ndarray`
         Data array.
     unit : str or `~astropy.units.Unit`
-        Data unit usuually ``s^-1 MeV^-1 sr^-1``
+        Data unit usually ``s^-1 MeV^-1 sr^-1``
     meta : dict
         Meta data
 
@@ -137,6 +142,14 @@ class Background3D(BackgroundIRF):
         )
 
     def peek(self, figsize=(10, 8)):
+        """Quick-look summary plots.
+
+        Parameters
+        ----------
+        figsize : tuple
+            Size of the figure.
+
+        """
         return self.to_2d().peek(figsize)
 
     def plot_at_energy(
@@ -148,23 +161,24 @@ class Background3D(BackgroundIRF):
         ----------
         energy : `~astropy.units.Quantity`
             list of Energy
-        ax: `~matplotlib.axes.Axes`, optional
-            Axis
         add_cbar : bool
             Add color bar?
         ncols : int
             Number of columns to plot
+        figsize : tuple
+            Figure size
         **kwargs : dict
             Keyword arguments passed to `~matplotlib.pyplot.pcolormesh`.
         """
-        import matplotlib.pyplot as plt
-
         n = len(energy)
         cols = min(ncols, n)
         rows = 1 + (n - 1) // cols
         width = 12
+        cfraction = 0.0
+        if add_cbar:
+            cfraction = 0.15
         if figsize is None:
-            figsize = (width, width * rows / cols)
+            figsize = (width, rows * width // (cols * (1 + cfraction)))
 
         fig, axes = plt.subplots(
             ncols=cols,
@@ -191,13 +205,15 @@ class Background3D(BackgroundIRF):
             ax.set_title(str(ee))
             if add_cbar:
                 label = f"Background [{bkg.unit}]"
-                ax.figure.colorbar(caxes, ax=ax, label=label)
+                cbar = ax.figure.colorbar(caxes, ax=ax, label=label, fraction=cfraction)
+                cbar.formatter.set_powerlimits((0, 0))
 
             row, col = np.unravel_index(i, shape=(rows, cols))
             if col > 0:
                 ax.set_ylabel("")
             if row < rows - 1:
                 ax.set_xlabel("")
+            ax.set_aspect("equal", "box")
 
 
 class Background2D(BackgroundIRF):
@@ -245,30 +261,31 @@ class Background2D(BackgroundIRF):
             data=data,
         )
 
-    def plot_at_energy(self, energy=None, ax=None, add_cbar=True, ncols=3, **kwargs):
+    def plot_at_energy(
+        self, energy=None, add_cbar=True, ncols=3, figsize=None, **kwargs
+    ):
         """Plot the background rate in Field of view coordinates at a given energy.
 
         Parameters
         ----------
         energy : `~astropy.units.Quantity`
             list of Energy
-        ax: `~matplotlib.axes.Axes`, optional
-            Axis
         add_cbar : bool
             Add color bar?
         ncols : int
             Number of columns to plot
+        figsize : tuple
+            Figure size
         **kwargs : dict
             Keyword arguments passed to `~matplotlib.pyplot.pcolormesh`.
         """
         bkg_3d = self.to_3d()
-        bkg_3d.plot_at_energy(energy, ax, add_cbar, ncols, **kwargs)
+        bkg_3d.plot_at_energy(
+            energy=energy, add_cbar=add_cbar, ncols=ncols, figsize=figsize, **kwargs
+        )
 
     def plot(self, ax=None, add_cbar=True, **kwargs):
         """Plot energy offset dependence of the background model."""
-        import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
-
         ax = plt.gca() if ax is None else ax
 
         energy_axis, offset_axis = self.axes["energy"], self.axes["offset"]
@@ -287,7 +304,7 @@ class Background2D(BackgroundIRF):
         offset_axis.format_plot_yaxis(ax=ax)
 
         if add_cbar:
-            label = f"Background rate ({self.unit})"
+            label = f"Background rate [{self.unit}]"
             ax.figure.colorbar(caxes, ax=ax, label=label)
 
     def plot_offset_dependence(self, ax=None, energy=None, **kwargs):
@@ -305,8 +322,6 @@ class Background2D(BackgroundIRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         if energy is None:
@@ -347,8 +362,6 @@ class Background2D(BackgroundIRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         if offset is None:
@@ -385,8 +398,6 @@ class Background2D(BackgroundIRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         offset_axis = self.axes["offset"]
@@ -405,8 +416,6 @@ class Background2D(BackgroundIRF):
 
     def peek(self, figsize=(10, 8)):
         """Quick-look summary plots."""
-        import matplotlib.pyplot as plt
-
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=figsize)
         self.plot(ax=axes[1][1])
         self.plot_offset_dependence(ax=axes[0][0])

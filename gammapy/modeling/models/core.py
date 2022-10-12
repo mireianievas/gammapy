@@ -7,12 +7,12 @@ import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
-from regions import PointSkyRegion
+import matplotlib.pyplot as plt
 import yaml
 from gammapy.maps import Map, RegionGeom
 from gammapy.modeling import Covariance, Parameter, Parameters
+from gammapy.modeling.covariance import copy_covariance
 from gammapy.utils.scripts import make_name, make_path
-
 
 __all__ = ["Model", "Models", "DatasetModels", "ModelBase"]
 
@@ -71,6 +71,7 @@ class ModelBase:
                 par = value
 
             setattr(self, par.name, par)
+
         self._covariance = Covariance(self.parameters)
 
     def __getattribute__(self, name):
@@ -118,7 +119,7 @@ class ModelBase:
         self._check_covariance()
         for par in self.parameters:
             pars = Parameters([par])
-            error = np.nan_to_num(par.error ** 2, nan=1)
+            error = np.nan_to_num(par.error**2, nan=1)
             covar = Covariance(pars, data=[[error]])
             self._covariance.set_subcovariance(covar)
 
@@ -141,7 +142,8 @@ class ModelBase:
             [getattr(self, name) for name in self.default_parameters.names]
         )
 
-    def copy(self):
+    @copy_covariance
+    def copy(self, **kwargs):
         """A deep copy."""
         return copy.deepcopy(self)
 
@@ -153,10 +155,19 @@ class ModelBase:
         if not full_output:
             for par, par_default in zip(params, self.default_parameters):
                 init = par_default.to_dict()
-                for item in ["min", "max", "error", "interp", "scale_method"]:
+                for item in [
+                    "min",
+                    "max",
+                    "error",
+                    "interp",
+                    "scale_method",
+                    "is_norm",
+                ]:
                     default = init[item]
 
-                    if par[item] == default or np.isnan(default):
+                    if par[item] == default or (
+                        np.isnan(par[item]) and np.isnan(default)
+                    ):
                         del par[item]
 
                 if not par["frozen"]:
@@ -164,11 +175,13 @@ class ModelBase:
 
                 if init["unit"] == "":
                     del par["unit"]
+
         data = {"type": tag, "parameters": params}
-        if self._type is None:
+
+        if self.type is None:
             return data
         else:
-            return {self._type: data}
+            return {self.type: data}
 
     @classmethod
     def from_dict(cls, data):
@@ -176,11 +189,13 @@ class ModelBase:
 
         par_data = []
         key0 = next(iter(data))
+
         if key0 in ["spatial", "temporal", "spectral"]:
             data = data[key0]
+
         if data["type"] not in cls.tag:
             raise ValueError(
-                f"Invalid model type {data['type']} for Class {cls.__name__}"
+                f"Invalid model type {data['type']} for class {cls.__name__}"
             )
 
         input_names = [_["name"] for _ in data["parameters"]]
@@ -192,13 +207,15 @@ class ModelBase:
                 par_dict.update(data["parameters"][index])
             except ValueError:
                 log.warning(
-                    f"Parameter {par_dict['name']} not defined. Using default value: {par_dict['value']} {par_dict['unit']}"
+                    f"Parameter '{par_dict['name']}' not defined in YAML file."
+                    f" Using default value: {par_dict['value']} {par_dict['unit']}"
                 )
             par_data.append(par_dict)
 
         parameters = Parameters.from_dict(par_data)
 
-        # TODO: this is a special case for spatial models, maybe better move to `SpatialModel` base class
+        # TODO: this is a special case for spatial models, maybe better move to
+        #  `SpatialModel` base class
         if "frame" in data:
             kwargs["frame"] = data["frame"]
 
@@ -272,7 +289,9 @@ class Model:
         Examples
         --------
         >>> from gammapy.modeling.models import Model
-        >>> spectral_model = Model.create("pl-2", model_type="spectral", amplitude="1e-10 cm-2 s-1", index=3)
+        >>> spectral_model = Model.create(
+                    "pl-2", model_type="spectral", amplitude="1e-10 cm-2 s-1", index=3
+                )
         >>> type(spectral_model)
         <class 'gammapy.modeling.models.spectral.PowerLaw2SpectralModel'>
         """
@@ -432,6 +451,8 @@ class DatasetModels(collections.abc.Sequence):
             path to write files
         overwrite : bool
             overwrite YAML files
+        full_output : bool
+            Store full parameter output.
         overwrite_templates : bool
             overwrite templates FITS files
         write_covariance : bool
@@ -478,7 +499,6 @@ class DatasetModels(collections.abc.Sequence):
         for param in params_shared:
             param._link_label_io = param.name + "@" + make_name()
 
-
     def to_dict(self, full_output=False, overwrite_templates=False):
         """Convert to dict."""
 
@@ -509,7 +529,6 @@ class DatasetModels(collections.abc.Sequence):
         # Warning: splitting of parameters will break is source name has a "." in its name.
         model_name = [name.split(".")[0] for name in self.parameters_unique_names]
         table.add_column(model_name, name="model", index=0)
-        self._table_cached = table
         return table
 
     def update_parameters_from_table(self, t):
@@ -523,6 +542,8 @@ class DatasetModels(collections.abc.Sequence):
 
         Parameters
         ----------
+        path : str or `Path`
+            Base path
         filename : str
             Filename
         **kwargs : dict
@@ -555,12 +576,12 @@ class DatasetModels(collections.abc.Sequence):
 
         for idx, name in enumerate(names):
             values = self.covariance.data[idx]
-            table[name] = values
+            table[str(idx)] = values
 
         table.write(make_path(filename), **kwargs)
 
     def __str__(self):
-        
+
         self.update_link_label()
 
         str_ = f"{self.__class__.__name__}\n\n"
@@ -603,9 +624,27 @@ class DatasetModels(collections.abc.Sequence):
     def _ipython_key_completions_(self):
         return self.names
 
-    def copy(self):
-        """A deep copy."""
-        return copy.deepcopy(self)
+    @copy_covariance
+    def copy(self, copy_data=False):
+        """A deep copy.
+
+        Parameters
+        ----------
+        copy_data : bool
+            Whether to copy data attached to template models
+
+        Returns
+        -------
+        models: `Models`
+            Copied models.
+        """
+        models = []
+
+        for model in self:
+            model_copy = model.copy(name=model.name, copy_data=copy_data)
+            models.append(model_copy)
+
+        return self.__class__(models=models)
 
     def select(
         self,
@@ -782,16 +821,16 @@ class DatasetModels(collections.abc.Sequence):
         return restore_models_status(self, restore_values)
 
     def set_parameters_bounds(
-        self, tag, model_type, parameters_names, min=None, max=None, value=None
+        self, tag, model_type, parameters_names=None, min=None, max=None, value=None
     ):
         """Set bounds for the selected models types and parameters names
 
         Parameters
         ----------
         tag : str or list
-            tag of the models
-        model_type : {"spatial", "spectral"}
-            type of models
+            Tag of the models
+        model_type :  {"spatial", "spectral", "temporal"}
+            Type of model
         parameters_names : str or list
             parameters names
         min : float
@@ -801,7 +840,6 @@ class DatasetModels(collections.abc.Sequence):
         value : float
             init value
         """
-
         models = self.select(tag=tag, model_type=model_type)
         parameters = models.parameters.select(name=parameters_names, type=model_type)
         n = len(parameters)
@@ -862,21 +900,31 @@ class DatasetModels(collections.abc.Sequence):
 
         Parameters
         ----------
+        geom : `Geom`
+            Map geometry of the result template model.
         spectral_model : `~gammapy.modeling.models.SpectralModel`
             One of the NormSpectralMdel
         name : str
             Name of the new model
 
+        Returns
+        -------
+        model : `SkyModel`
+            Template sky model.
         """
         from . import PowerLawNormSpectralModel, SkyModel, TemplateSpatialModel
 
         unit = u.Unit("1 / (cm2 s sr TeV)")
         map_ = Map.from_geom(geom, unit=unit)
+
         for m in self:
             map_ += m.evaluate_geom(geom).to(unit)
+
         spatial_model = TemplateSpatialModel(map_, normalize=False)
+
         if spectral_model is None:
             spectral_model = PowerLawNormSpectralModel()
+
         return SkyModel(
             spectral_model=spectral_model, spatial_model=spatial_model, name=name
         )
@@ -888,7 +936,7 @@ class DatasetModels(collections.abc.Sequence):
 
         for model in self.select(tag="sky-model"):
             if model.position:
-                positions.append(model.position)
+                positions.append(model.position.icrs)
             else:
                 log.warning(
                     f"Skipping model {model.name} - no spatial component present"
@@ -947,32 +995,11 @@ class DatasetModels(collections.abc.Sequence):
         ax : `~astropy.visualization.WcsAxes`
             WCS axes
         """
-        from astropy.visualization.wcsaxes import WCSAxes
-
-        kwargs_point = kwargs_point or {}
-
-        if ax is None or not isinstance(ax, WCSAxes):
-            ax = Map.from_geom(self.wcs_geom).plot()
-
-        kwargs.setdefault("color", "tab:blue")
-        kwargs.setdefault("fc", "None")
-        kwargs_point.setdefault("marker", "*")
-        kwargs_point.setdefault("markersize", 10)
-        kwargs_point.setdefault("markeredgecolor", "None")
-        kwargs_point.setdefault("color", kwargs["color"])
-
-        for region in self.to_regions():
-            if isinstance(region, PointSkyRegion):
-                artist = region.to_pixel(ax.wcs).as_artist(**kwargs_point)
-            else:
-                artist = region.to_pixel(ax.wcs).as_artist(**kwargs)
-
-            if path_effect:
-                artist.set_path_effects([path_effect])
-
-            ax.add_artist(artist)
-
-        return ax
+        regions = self.to_regions()
+        geom = RegionGeom.from_regions(regions=regions)
+        return geom.plot_region(
+            ax=ax, kwargs_point=kwargs_point, path_effect=path_effect, **kwargs
+        )
 
     def plot_positions(self, ax=None, **kwargs):
         """ "Plot the centers of the spatial models on a given wcs axis
@@ -992,7 +1019,6 @@ class DatasetModels(collections.abc.Sequence):
             Wcs axes
         """
         from astropy.visualization.wcsaxes import WCSAxes
-        import matplotlib.pyplot as plt
 
         if ax is None or not isinstance(ax, WCSAxes):
             ax = Map.from_geom(self.wcs_geom).plot()

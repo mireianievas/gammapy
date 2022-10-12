@@ -4,7 +4,6 @@ import numpy as np
 from astropy.coordinates import Angle, SkyCoord
 from astropy.table import Table
 from astropy.units import Quantity, Unit
-from astropy.utils import lazyproperty
 from gammapy.utils.regions import SphericalCircleSkyRegion
 from gammapy.utils.scripts import make_path
 from gammapy.utils.testing import Checker
@@ -57,31 +56,6 @@ class ObservationTable(Table):
         """Observation stop time (`~astropy.time.Time`)."""
         return self.time_ref + Quantity(self["TSTOP"], "second")
 
-    @lazyproperty
-    def _index_dict(self):
-        """Dict containing row index for all obs ids."""
-        # TODO: Switch to http://docs.astropy.org/en/latest/table/indexing.html once it is more stable
-        temp = zip(self["OBS_ID"], np.arange(len(self)))
-        return dict(temp)
-
-    def get_obs_idx(self, obs_id):
-        """Get row index for given ``obs_id``.
-
-        Raises KeyError if observation is not available.
-
-        Parameters
-        ----------
-        obs_id : int, list
-            observation ids
-
-        Returns
-        -------
-        idx : list
-            indices corresponding to obs_id
-        """
-        idx = [self._index_dict[key] for key in np.atleast_1d(obs_id)]
-        return idx
-
     def select_obs_id(self, obs_id):
         """Get `~gammapy.data.ObservationTable` containing only ``obs_id``.
 
@@ -92,7 +66,11 @@ class ObservationTable(Table):
         obs_id: int, list
             observation ids
         """
-        return self[self.get_obs_idx(obs_id)]
+        try:
+            self.indices["OBS_ID"]
+        except IndexError:
+            self.add_index("OBS_ID")
+        return self.__class__(self.loc["OBS_ID", obs_id])
 
     def summary(self):
         """Summary info string (str)."""
@@ -203,8 +181,8 @@ class ObservationTable(Table):
         center : `~astropy.coordinate.SkyCoord`
             Cone center coordinate.
         radius : `~astropy.coordinate.Angle`
-            Cone opening angle. The maximal separation allowed between the center and the observation
-            pointing direction.
+            Cone opening angle. The maximal separation allowed between the center
+            and the observation pointing direction.
         inverted : bool, optional
             Invert selection: keep all entries outside the cone.
 
@@ -283,10 +261,12 @@ class ObservationTable(Table):
         >>> selected_obs_table = obs_table.select_observations(selection)
 
         >>> from astropy.time import Time
-        >>> selection = dict(type='time_box', time_range=Time(['2012-01-01T01:00:00', '2012-01-01T02:00:00']))
+        >>> time_range = Time(['2012-01-01T01:00:00', '2012-01-01T02:00:00'])
+        >>> selection = dict(type='time_box', time_range=time_range)
         >>> selected_obs_table = obs_table.select_observations(selection)
 
-        >>> selection = dict(type='par_box', variable='ALT_PNT', value_range=Angle([60., 70.], 'deg'))
+        >>> value_range = Angle([60., 70.], 'deg')
+        >>> selection = dict(type='par_box', variable='ALT_PNT', value_range=value_range)
         >>> selected_obs_table = obs_table.select_observations(selection)
 
         >>> selection = dict(type='par_box', variable='OBS_ID', value_range=[2, 5])

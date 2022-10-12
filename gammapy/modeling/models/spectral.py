@@ -1,6 +1,8 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Spectral models for Gammapy."""
+import logging
 import operator
+import os
 import numpy as np
 import scipy.optimize
 import scipy.special
@@ -9,6 +11,7 @@ from astropy import constants as const
 from astropy.table import Table
 from astropy.utils.decorators import classproperty
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
 from gammapy.maps import MapAxis, RegionNDMap
 from gammapy.modeling import Parameter, Parameters
 from gammapy.utils.integrate import trapz_loglog
@@ -19,7 +22,6 @@ from gammapy.utils.interpolation import (
 from gammapy.utils.roots import find_roots
 from gammapy.utils.scripts import make_path
 from .core import ModelBase
-import os, logging
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +75,7 @@ def scale_plot_flux(flux, energy_power=0):
     except IndexError:
         eunit = energy.unit
     y = flux * np.power(energy, energy_power)
-    return y.to_unit(flux.unit * eunit ** energy_power)
+    return y.to_unit(flux.unit * eunit**energy_power)
 
 
 def integrate_spectrum(func, energy_min, energy_max, ndecade=100):
@@ -321,7 +323,7 @@ class SpectralModel(ModelBase):
             "ref_dnde": self(energy),
             "ref_flux": self.integral(energy_min, energy_max),
             "ref_eflux": self.energy_flux(energy_min, energy_max),
-            "ref_e2dnde": self(energy) * energy ** 2,
+            "ref_e2dnde": self(energy) * energy**2,
         }
 
     def _get_plot_flux(self, energy, sed_type):
@@ -332,7 +334,7 @@ class SpectralModel(ModelBase):
             flux.quantity, flux_err.quantity = self.evaluate_error(energy.center)
 
         elif sed_type == "e2dnde":
-            flux.quantity, flux_err.quantity = energy.center ** 2 * self.evaluate_error(
+            flux.quantity, flux_err.quantity = energy.center**2 * self.evaluate_error(
                 energy.center
             )
 
@@ -393,7 +395,6 @@ class SpectralModel(ModelBase):
         ax : `~matplotlib.axes.Axes`, optional
             Axis
         """
-        import matplotlib.pyplot as plt
         from gammapy.estimators.map.core import DEFAULT_UNIT
 
         ax = plt.gca() if ax is None else ax
@@ -408,9 +409,8 @@ class SpectralModel(ModelBase):
             n_points,
         )
 
-        kwargs.setdefault(
-            "yunits", DEFAULT_UNIT[sed_type] * energy.unit ** energy_power
-        )
+        if ax.yaxis.units is None:
+            ax.yaxis.set_units(DEFAULT_UNIT[sed_type] * energy.unit**energy_power)
 
         flux, _ = self._get_plot_flux(sed_type=sed_type, energy=energy)
 
@@ -467,7 +467,6 @@ class SpectralModel(ModelBase):
         ax : `~matplotlib.axes.Axes`, optional
             Axis
         """
-        import matplotlib.pyplot as plt
         from gammapy.estimators.map.core import DEFAULT_UNIT
 
         ax = plt.gca() if ax is None else ax
@@ -485,9 +484,9 @@ class SpectralModel(ModelBase):
         kwargs.setdefault("facecolor", "black")
         kwargs.setdefault("alpha", 0.2)
         kwargs.setdefault("linewidth", 0)
-        kwargs.setdefault(
-            "yunits", DEFAULT_UNIT[sed_type] * energy.unit ** energy_power
-        )
+
+        if ax.yaxis.units is None:
+            ax.yaxis.set_units(DEFAULT_UNIT[sed_type] * energy.unit**energy_power)
 
         flux, flux_err = self._get_plot_flux(sed_type=sed_type, energy=energy)
         y_lo = scale_plot_flux(flux - flux_err, energy_power).quantity[:, 0, 0]
@@ -601,7 +600,7 @@ class ConstantSpectralModel(SpectralModel):
     """
 
     tag = ["ConstantSpectralModel", "const"]
-    const = Parameter("const", "1e-12 cm-2 s-1 TeV-1")
+    const = Parameter("const", "1e-12 cm-2 s-1 TeV-1", is_norm=True)
 
     @staticmethod
     def evaluate(energy, const):
@@ -687,7 +686,11 @@ class PowerLawSpectralModel(SpectralModel):
     tag = ["PowerLawSpectralModel", "pl"]
     index = Parameter("index", 2.0)
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        "amplitude",
+        "1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
 
@@ -742,7 +745,7 @@ class PowerLawSpectralModel(SpectralModel):
         """
         val = -1 * index + 2
 
-        prefactor = amplitude * reference ** 2 / val
+        prefactor = amplitude * reference**2 / val
         upper = (energy_max / reference) ** val
         lower = (energy_min / reference) ** val
         energy_flux = prefactor * (upper - lower)
@@ -753,7 +756,7 @@ class PowerLawSpectralModel(SpectralModel):
             # see https://www.wolframalpha.com/input/?i=a+*+x+*+(x%2Fb)+%5E+(-2)
             # for reference
             energy_flux[mask] = (
-                amplitude * reference ** 2 * np.log(energy_max / energy_min)[mask]
+                amplitude * reference**2 * np.log(energy_max / energy_min)[mask]
             )
 
         return energy_flux
@@ -783,7 +786,7 @@ class PowerLawSpectralModel(SpectralModel):
         reference = self.reference.quantity
         amplitude = self.amplitude.quantity
         cov_index_ampl = self.covariance.data[0, 1] * amplitude.unit
-        return reference * np.exp(cov_index_ampl / (amplitude * index_err ** 2))
+        return reference * np.exp(cov_index_ampl / (amplitude * index_err**2))
 
 
 class PowerLawNormSpectralModel(SpectralModel):
@@ -804,7 +807,7 @@ class PowerLawNormSpectralModel(SpectralModel):
     """
 
     tag = ["PowerLawNormSpectralModel", "pl-norm"]
-    norm = Parameter("norm", 1, unit="", interp="log")
+    norm = Parameter("norm", 1, unit="", interp="log", is_norm=True)
     tilt = Parameter("tilt", 0, frozen=True)
     reference = Parameter("reference", "1 TeV", frozen=True)
 
@@ -835,7 +838,7 @@ class PowerLawNormSpectralModel(SpectralModel):
         """Evaluate the energy flux (static function)"""
         val = -1 * tilt + 2
 
-        prefactor = norm * reference ** 2 / val
+        prefactor = norm * reference**2 / val
         upper = (energy_max / reference) ** val
         lower = (energy_min / reference) ** val
         energy_flux = prefactor * (upper - lower)
@@ -846,7 +849,7 @@ class PowerLawNormSpectralModel(SpectralModel):
             # see https://www.wolframalpha.com/input/?i=a+*+x+*+(x%2Fb)+%5E+(-2)
             # for reference
             energy_flux[mask] = (
-                norm * reference ** 2 * np.log(energy_max / energy_min)[mask]
+                norm * reference**2 * np.log(energy_max / energy_min)[mask]
             )
 
         return energy_flux
@@ -876,7 +879,7 @@ class PowerLawNormSpectralModel(SpectralModel):
         reference = self.reference.quantity
         norm = self.norm.quantity
         cov_tilt_norm = self.covariance.data[0, 1] * norm.unit
-        return reference * np.exp(cov_tilt_norm / (norm * tilt_err ** 2))
+        return reference * np.exp(cov_tilt_norm / (norm * tilt_err**2))
 
 
 class PowerLaw2SpectralModel(SpectralModel):
@@ -902,7 +905,11 @@ class PowerLaw2SpectralModel(SpectralModel):
     tag = ["PowerLaw2SpectralModel", "pl-2"]
 
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1", scale_method="scale10", interp="log"
+        name="amplitude",
+        value="1e-12 cm-2 s-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     index = Parameter("index", 2)
     emin = Parameter("emin", "0.1 TeV", frozen=True)
@@ -986,7 +993,11 @@ class BrokenPowerLawSpectralModel(SpectralModel):
     index1 = Parameter("index1", 2.0)
     index2 = Parameter("index2", 2.0)
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        name="amplitude",
+        value="1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     ebreak = Parameter("ebreak", "1 TeV")
 
@@ -1030,7 +1041,11 @@ class SmoothBrokenPowerLawSpectralModel(SpectralModel):
     index1 = Parameter("index1", 2.0)
     index2 = Parameter("index2", 2.0)
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        name="amplitude",
+        value="1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     ebreak = Parameter("ebreak", "1 TeV")
     reference = Parameter("reference", "1 TeV", frozen=True)
@@ -1155,7 +1170,11 @@ class ExpCutoffPowerLawSpectralModel(SpectralModel):
 
     index = Parameter("index", 1.5)
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        name="amplitude",
+        value="1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
     lambda_ = Parameter("lambda_", "0.1 TeV-1")
@@ -1212,7 +1231,7 @@ class ExpCutoffPowerLawNormSpectralModel(SpectralModel):
     tag = ["ExpCutoffPowerLawNormSpectralModel", "ecpl-norm"]
 
     index = Parameter("index", 1.5)
-    norm = Parameter("norm", 1, unit="", interp="log")
+    norm = Parameter("norm", 1, unit="", interp="log", is_norm=True)
     reference = Parameter("reference", "1 TeV", frozen=True)
     lambda_ = Parameter("lambda_", "0.1 TeV-1")
     alpha = Parameter("alpha", "1.0", frozen=True)
@@ -1246,7 +1265,11 @@ class ExpCutoffPowerLaw3FGLSpectralModel(SpectralModel):
     tag = ["ExpCutoffPowerLaw3FGLSpectralModel", "ecpl-3fgl"]
     index = Parameter("index", 1.5)
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        "amplitude",
+        "1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
     ecut = Parameter("ecut", "10 TeV")
@@ -1286,7 +1309,11 @@ class SuperExpCutoffPowerLaw3FGLSpectralModel(SpectralModel):
 
     tag = ["SuperExpCutoffPowerLaw3FGLSpectralModel", "secpl-3fgl"]
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        "amplitude",
+        "1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
     ecut = Parameter("ecut", "10 TeV")
@@ -1323,7 +1350,11 @@ class SuperExpCutoffPowerLaw4FGLSpectralModel(SpectralModel):
 
     tag = ["SuperExpCutoffPowerLaw4FGLSpectralModel", "secpl-4fgl"]
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        "amplitude",
+        "1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
     expfactor = Parameter("expfactor", "1e-2")
@@ -1336,8 +1367,8 @@ class SuperExpCutoffPowerLaw4FGLSpectralModel(SpectralModel):
         pwl = amplitude * (energy / reference) ** (-index_1)
         cutoff = np.exp(
             expfactor
-            / reference.unit ** index_2
-            * (reference ** index_2 - energy ** index_2)
+            / reference.unit**index_2
+            * (reference**index_2 - energy**index_2)
         )
         return pwl * cutoff
 
@@ -1363,7 +1394,11 @@ class SuperExpCutoffPowerLaw4FGLDR3SpectralModel(SpectralModel):
 
     tag = ["SuperExpCutoffPowerLaw4FGLDR3SpectralModel", "secpl-4fgl-dr3"]
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        name="amplitude",
+        value="1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "1 TeV", frozen=True)
     expfactor = Parameter("expfactor", "1e-2")
@@ -1373,19 +1408,20 @@ class SuperExpCutoffPowerLaw4FGLDR3SpectralModel(SpectralModel):
     @staticmethod
     def evaluate(energy, amplitude, reference, expfactor, index_1, index_2):
         """Evaluate the model (static function)."""
-        #https://fermi.gsfc.nasa.gov/ssc/data/analysis/scitools/source_models.html#PLSuperExpCutoff4
+        # https://fermi.gsfc.nasa.gov/ssc/data/analysis/scitools/source_models.html#PLSuperExpCutoff4
         pwl = amplitude * (energy / reference) ** (-index_1)
         cutoff = (energy / reference) ** (expfactor / index_2) * np.exp(
-            expfactor
-            / index_2 ** 2
-            * (1 - (energy / reference)** index_2)
+            expfactor / index_2**2 * (1 - (energy / reference) ** index_2)
         )
 
         mask = np.abs(index_2 * np.log(energy / reference)) < 1e-2
         ln_ = np.log(energy[mask] / reference)
-        power = expfactor * (ln_ / 2. + index_2 / 6. * ln_ ** 2. + index_2 ** 2. / 24. * ln_ ** 3)
+        power = expfactor * (
+            ln_ / 2.0 + index_2 / 6.0 * ln_**2.0 + index_2**2.0 / 24.0 * ln_**3
+        )
         cutoff[mask] = (energy[mask] / reference) ** power
         return pwl * cutoff
+
 
 class LogParabolaSpectralModel(SpectralModel):
     r"""Spectral log parabola model.
@@ -1410,7 +1446,11 @@ class LogParabolaSpectralModel(SpectralModel):
     """
     tag = ["LogParabolaSpectralModel", "lp"]
     amplitude = Parameter(
-        "amplitude", "1e-12 cm-2 s-1 TeV-1", scale_method="scale10", interp="log"
+        "amplitude",
+        "1e-12 cm-2 s-1 TeV-1",
+        scale_method="scale10",
+        interp="log",
+        is_norm=True,
     )
     reference = Parameter("reference", "10 TeV", frozen=True)
     alpha = Parameter("alpha", 2)
@@ -1463,7 +1503,7 @@ class LogParabolaNormSpectralModel(SpectralModel):
     LogParabolaSpectralModel
     """
     tag = ["LogParabolaNormSpectralModel", "lp-norm"]
-    norm = Parameter("norm", 1, unit="", interp="log")
+    norm = Parameter("norm", 1, unit="", interp="log", is_norm=True)
     reference = Parameter("reference", "10 TeV", frozen=True)
     alpha = Parameter("alpha", 2)
     beta = Parameter("beta", 1)
@@ -1503,12 +1543,14 @@ class TemplateSpectralModel(SpectralModel):
         Meta information, meta['filename'] will be used for serialization
     """
 
+    norm = Parameter("norm", 1, unit="", interp="log", is_norm=True, frozen=True)
     tag = ["TemplateSpectralModel", "template"]
 
     def __init__(
         self,
         energy,
         values,
+        norm=1.0,
         interp_kwargs=None,
         meta=None,
     ):
@@ -1519,14 +1561,14 @@ class TemplateSpectralModel(SpectralModel):
         interp_kwargs.setdefault("values_scale", "log")
         interp_kwargs.setdefault("points_scale", ("log",))
 
-        if len(energy)==1:
+        if len(energy) == 1:
             interp_kwargs["method"] = "nearest"
 
         self._evaluate = ScaledRegularGridInterpolator(
             points=(energy,), values=values, **interp_kwargs
         )
 
-        super().__init__()
+        super().__init__(norm=norm)
 
     @classmethod
     def read_xspec_model(cls, filename, param, **kwargs):
@@ -1578,31 +1620,30 @@ class TemplateSpectralModel(SpectralModel):
         kwargs.setdefault("interp_kwargs", {"values_scale": "lin"})
         return cls(energy=energy, values=values, **kwargs)
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, norm):
         """Evaluate the model (static function)."""
-        return self._evaluate((energy,), clip=True)
+        return norm * self._evaluate((energy,), clip=True)
 
     def to_dict(self, full_output=False):
-        return {
-            self._type: {
-                "type": self.tag[0],
-                "energy": {
-                    "data": self.energy.data.tolist(),
-                    "unit": str(self.energy.unit),
-                },
-                "values": {
-                    "data": self.values.data.tolist(),
-                    "unit": str(self.values.unit),
-                },
-            }
+        data = super().to_dict(full_output)
+        data["spectral"]["energy"] = {
+            "data": self.energy.data.tolist(),
+            "unit": str(self.energy.unit),
         }
+        data["spectral"]["values"] = {
+            "data": self.values.data.tolist(),
+            "unit": str(self.values.unit),
+        }
+
+        return data
 
     @classmethod
     def from_dict(cls, data):
         data = data["spectral"]
         energy = u.Quantity(data["energy"]["data"], data["energy"]["unit"])
         values = u.Quantity(data["values"]["data"], data["values"]["unit"])
-        return cls(energy=energy, values=values)
+        norm = [p["value"] for p in data["parameters"] if p["name"] == "norm"][0]
+        return cls(energy=energy, values=values, norm=norm)
 
     @classmethod
     def from_region_map(cls, map, **kwargs):
@@ -1657,7 +1698,7 @@ class TemplateNDSpectralModel(SpectralModel):
                 points_scale.append(axis.interp)
                 parameters.append(parameter)
             else:
-                has_energy|=True
+                has_energy |= True
         if not has_energy:
             raise ValueError("Invalid map, no energy axis found")
 
@@ -1678,11 +1719,12 @@ class TemplateNDSpectralModel(SpectralModel):
         coord = {"energy_true": energy}
         coord.update(kwargs)
 
-        pixels = [0,0] + [self.map.geom.axes[key].coord_to_pix(value) for key, value in coord.items()]
+        pixels = [0, 0] + [
+            self.map.geom.axes[key].coord_to_pix(value) for key, value in coord.items()
+        ]
 
         val = self.map.interp_by_pix(pixels, **self._interp_kwargs)
         return u.Quantity(val, self.map.unit, copy=False)
-
 
     def write(self, overwrite=False):
         if self.filename is None:
@@ -1694,18 +1736,21 @@ class TemplateNDSpectralModel(SpectralModel):
 
     @classmethod
     def from_dict(cls, data):
+        data = data["spectral"]
         filename = data["filename"]
         m = RegionNDMap.read(filename)
         model = cls(m, filename=filename)
         for idx, p in enumerate(model.parameters):
-            p.value = data["spectral"]["parameters"][idx]["value"]
+            par = p.to_dict()
+            par.update(data["parameters"][idx])
+            setattr(model, p.name, Parameter(**par))
         return model
 
     def to_dict(self, full_output=False):
         """Create dict for YAML serilisation"""
         data = super().to_dict(full_output)
-        data["filename"] = self.filename
-        data["unit"] = str(self.map.unit)
+        data["spectral"]["filename"] = self.filename
+        data["spectral"]["unit"] = str(self.map.unit)
         return data
 
 
@@ -1721,7 +1766,7 @@ class ScaleSpectralModel(SpectralModel):
     """
 
     tag = ["ScaleSpectralModel", "scale"]
-    norm = Parameter("norm", 1, unit="", interp="log")
+    norm = Parameter("norm", 1, unit="", interp="log", is_norm=True)
 
     def __init__(self, model, norm=norm.quantity):
         self.model = model
@@ -1766,7 +1811,6 @@ class EBLAbsorptionNormSpectralModel(SpectralModel):
         self.filename = None
         # set values log centers
         self.param = param
-        self.energy = energy
         self.energy = energy
         self.data = u.Quantity(data, copy=False)
 
@@ -1825,8 +1869,6 @@ class EBLAbsorptionNormSpectralModel(SpectralModel):
     @classmethod
     def read(cls, filename, redshift=0.1, alpha_norm=1, interp_kwargs=None):
         """Build object from an XSPEC model.
-
-        Todo: Format of XSPEC binary files should be referenced at https://gamma-astro-data-formats.readthedocs.io/en/latest/
 
         Parameters
         ----------
@@ -1889,9 +1931,9 @@ class EBLAbsorptionNormSpectralModel(SpectralModel):
 
         References
         ----------
-        .. [1] Franceschini et al., "Extragalactic optical-infrared background radiation, its time evolution and the cosmic photon-photon opacity",
+        .. [1] Franceschini et al., "Extragalactic optical-infrared background radiation, its time evolution and the cosmic photon-photon opacity",  # noqa: E501
             `Link <https://ui.adsabs.harvard.edu/abs/2008A%26A...487..837F>`__
-        .. [2] Dominguez et al., " Extragalactic background light inferred from AEGIS galaxy-SED-type fractions"
+        .. [2] Dominguez et al., " Extragalactic background light inferred from AEGIS galaxy-SED-type fractions"  # noqa: E501
             `Link <https://ui.adsabs.harvard.edu/abs/2011MNRAS.410.2556D>`__
         .. [3] Finke et al., "Modeling the Extragalactic Background Light from Stars and Dust"
             `Link <https://ui.adsabs.harvard.edu/abs/2010ApJ...712..238F>`__
@@ -1937,12 +1979,17 @@ class NaimaSpectralModel(SpectralModel):
     tag = ["NaimaSpectralModel", "naima"]
 
     def __init__(
-        self, radiative_model, distance=1.0 * u.kpc, seed=None, nested_models=None
+        self,
+        radiative_model,
+        distance=1.0 * u.kpc,
+        seed=None,
+        nested_models=None,
+        use_cache=False,
     ):
         import naima
 
         self.radiative_model = radiative_model
-        self._particle_distribution = self.radiative_model.particle_distribution
+        self.radiative_model._memoize = use_cache
         self.distance = u.Quantity(distance)
         self.seed = seed
 
@@ -1951,16 +1998,17 @@ class NaimaSpectralModel(SpectralModel):
 
         self.nested_models = nested_models
 
-        if isinstance(self._particle_distribution, naima.models.TableModel):
+        if isinstance(self.particle_distribution, naima.models.TableModel):
             param_names = ["amplitude"]
         else:
-            param_names = self._particle_distribution.param_names
+            param_names = self.particle_distribution.param_names
 
         parameters = []
 
         for name in param_names:
-            value = getattr(self._particle_distribution, name)
-            parameter = Parameter(name, value)
+            value = getattr(self.particle_distribution, name)
+            is_norm = name == "amplitude"
+            parameter = Parameter(name, value, is_norm=is_norm)
             parameters.append(parameter)
 
         # In case of a synchrotron radiative model, append B to the fittable parameters
@@ -1970,46 +2018,60 @@ class NaimaSpectralModel(SpectralModel):
             parameters.append(parameter)
 
         # In case of a synchrotron self compton model, append B and Rpwn to the fittable parameters
-        if (
-            isinstance(self.radiative_model, naima.models.InverseCompton)
-            and "SSC" in self.nested_models
-        ):
+        if self.include_ssc:
             B = self.nested_models["SSC"]["B"]
             radius = self.nested_models["SSC"]["radius"]
             parameters.append(Parameter("B", B))
             parameters.append(Parameter("radius", radius, frozen=True))
 
-        for p in parameters:
-            p.scale_method = "scale10"
-
         self.default_parameters = Parameters(parameters)
+        self.ssc_energy = np.logspace(-7, 9, 100) * u.eV
         super().__init__()
+
+    @property
+    def include_ssc(self):
+        """Whether the model includes an SSC component"""
+        import naima
+
+        is_ic_model = isinstance(self.radiative_model, naima.models.InverseCompton)
+        return is_ic_model and "SSC" in self.nested_models
+
+    @property
+    def ssc_model(self):
+        """Synchrotron model"""
+        import naima
+
+        if self.include_ssc:
+            return naima.models.Synchrotron(
+                self.particle_distribution,
+                B=self.B.quantity,
+                Eemax=self.radiative_model.Eemax,
+                Eemin=self.radiative_model.Eemin,
+            )
+
+    @property
+    def particle_distribution(self):
+        """Particle distribution"""
+        return self.radiative_model.particle_distribution
 
     def _evaluate_ssc(
         self,
         energy,
     ):
         """
-        Compute photon density spectrum from synchrotron emission for synchrotron self-compton model,
-        assuming uniform synchrotron emissivity inside a sphere of radius R
-        (see Section 4.1 of Atoyan & Aharonian 1996)
+        Compute photon density spectrum from synchrotron emission for synchrotron self-compton
+        model, assuming uniform synchrotron emissivity inside a sphere of radius R (see Section
+        4.1 of Atoyan & Aharonian 1996)
 
-        based on :
-        "https://naima.readthedocs.io/en/latest/examples.html#crab-nebula-ssc-model"
+        Based on :
+
+        https://naima.readthedocs.io/en/latest/examples.html#crab-nebula-ssc-model
 
         """
-        import naima
-
-        SYN = naima.models.Synchrotron(
-            self._particle_distribution,
-            B=self.B.quantity,
-            Eemax=self.radiative_model.Eemax,
-            Eemin=self.radiative_model.Eemin,
-        )
-
-        Esy = np.logspace(-7, 9, 100) * u.eV
-        Lsy = SYN.flux(Esy, distance=0 * u.cm)  # use distance 0 to get luminosity
-        phn_sy = Lsy / (4 * np.pi * self.radius.quantity ** 2 * const.c) * 2.24
+        Lsy = self.ssc_model.flux(
+            self.ssc_energy, distance=0 * u.cm
+        )  # use distance 0 to get luminosity
+        phn_sy = Lsy / (4 * np.pi * self.radius.quantity**2 * const.c) * 2.24
         # The factor 2.24 comes from the assumption on uniform synchrotron
         # emissivity inside a sphere
 
@@ -2017,7 +2079,7 @@ class NaimaSpectralModel(SpectralModel):
             self.radiative_model.seed_photon_fields["SSC"] = {
                 "isotropic": True,
                 "type": "array",
-                "energy": Esy,
+                "energy": self.ssc_energy,
                 "photon_density": phn_sy,
             }
         else:
@@ -2025,23 +2087,33 @@ class NaimaSpectralModel(SpectralModel):
 
         dnde = self.radiative_model.flux(
             energy, seed=self.seed, distance=self.distance
-        ) + SYN.flux(energy, distance=self.distance)
+        ) + self.ssc_model.flux(energy, distance=self.distance)
         return dnde
 
-    def evaluate(self, energy, **kwargs):
-        """Evaluate the model."""
-        import naima
-
+    def _update_naima_parameters(self, **kwargs):
+        """Update Naima model parameters"""
         for name, value in kwargs.items():
-            setattr(self._particle_distribution, name, value)
+            setattr(self.particle_distribution, name, value)
 
         if "B" in self.radiative_model.param_names:
             self.radiative_model.B = self.B.quantity
 
-        if (
-            isinstance(self.radiative_model, naima.models.InverseCompton)
-            and "SSC" in self.nested_models
-        ):
+    def evaluate(self, energy, **kwargs):
+        """Evaluate the model.
+
+        Parameters
+        ----------
+        energy : `~astropy.units.Quantity`
+            Energy to evaluate the model at.
+
+        Returns
+        -------
+        dnde : `~astropy.units.Quantity`
+            Differential flux at given energy.
+        """
+        self._update_naima_parameters(**kwargs)
+
+        if self.include_ssc:
             dnde = self._evaluate_ssc(energy.flatten())
         elif self.seed is not None:
             dnde = self.radiative_model.flux(
@@ -2051,7 +2123,7 @@ class NaimaSpectralModel(SpectralModel):
             dnde = self.radiative_model.flux(energy.flatten(), distance=self.distance)
 
         dnde = dnde.reshape(energy.shape)
-        unit = 1 / (energy.unit * u.cm ** 2 * u.s)
+        unit = 1 / (energy.unit * u.cm**2 * u.s)
         return dnde.to(unit)
 
     def to_dict(self, full_output=True):
@@ -2078,7 +2150,7 @@ class GaussianSpectralModel(SpectralModel):
 
     Parameters
     ----------
-    norm : `~astropy.units.Quantity`
+    amplitude : `~astropy.units.Quantity`
         :math:`N_0`
     mean : `~astropy.units.Quantity`
         :math:`\bar{E}`
@@ -2087,23 +2159,25 @@ class GaussianSpectralModel(SpectralModel):
     """
 
     tag = ["GaussianSpectralModel", "gauss"]
-    norm = Parameter("norm", 1e-12 * u.Unit("cm-2 s-1"), interp="log")
+    amplitude = Parameter(
+        "amplitude", 1e-12 * u.Unit("cm-2 s-1"), interp="log", is_norm=True
+    )
     mean = Parameter("mean", 1 * u.TeV)
     sigma = Parameter("sigma", 2 * u.TeV)
 
     @staticmethod
-    def evaluate(energy, norm, mean, sigma):
+    def evaluate(energy, amplitude, mean, sigma):
         return (
-            norm
+            amplitude
             / (sigma * np.sqrt(2 * np.pi))
-            * np.exp(-((energy - mean) ** 2) / (2 * sigma ** 2))
+            * np.exp(-((energy - mean) ** 2) / (2 * sigma**2))
         )
 
     def integral(self, energy_min, energy_max, **kwargs):
         r"""Integrate Gaussian analytically.
 
         .. math::
-            F(E_{min}, E_{max}) = \frac{N_0}{2} \left[ erf(\frac{E - \bar{E}}{\sqrt{2} \sigma})\right]_{E_{min}}^{E_{max}}
+            F(E_{min}, E_{max}) = \frac{N_0}{2} \left[ erf(\frac{E - \bar{E}}{\sqrt{2} \sigma})\right]_{E_{min}}^{E_{max}}  # noqa: E501
 
         Parameters
         ----------
@@ -2120,7 +2194,7 @@ class GaussianSpectralModel(SpectralModel):
         ).to_value("")
 
         return (
-            self.norm.quantity
+            self.amplitude.quantity
             / 2
             * (scipy.special.erf(u_max) - scipy.special.erf(u_min))
         )
@@ -2129,8 +2203,8 @@ class GaussianSpectralModel(SpectralModel):
         r"""Compute energy flux in given energy range analytically.
 
         .. math::
-            G(E_{min}, E_{max}) =  \frac{N_0 \sigma}{\sqrt{2*\pi}}* \left[ - \exp(\frac{E_{min}-\bar{E}}{\sqrt{2} \sigma})
-            \right]_{E_{min}}^{E_{max}} + \frac{N_0 * \bar{E}}{2} \left[ erf(\frac{E - \bar{E}}{\sqrt{2} \sigma})
+            G(E_{min}, E_{max}) =  \frac{N_0 \sigma}{\sqrt{2*\pi}}* \left[ - \exp(\frac{E_{min}-\bar{E}}{\sqrt{2} \sigma})   # noqa: E501
+            \right]_{E_{min}}^{E_{max}} + \frac{N_0 * \bar{E}}{2} \left[ erf(\frac{E - \bar{E}}{\sqrt{2} \sigma})   # noqa: E501
              \right]_{E_{min}}^{E_{max}}
 
 
@@ -2145,8 +2219,8 @@ class GaussianSpectralModel(SpectralModel):
         u_max = (
             (energy_max - self.mean.quantity) / (np.sqrt(2) * self.sigma.quantity)
         ).to_value("")
-        a = self.norm.quantity * self.sigma.quantity / np.sqrt(2 * np.pi)
-        b = self.norm.quantity * self.mean.quantity / 2
-        return a * (np.exp(-(u_min ** 2)) - np.exp(-(u_max ** 2))) + b * (
+        a = self.amplitude.quantity * self.sigma.quantity / np.sqrt(2 * np.pi)
+        b = self.amplitude.quantity * self.mean.quantity / 2
+        return a * (np.exp(-(u_min**2)) - np.exp(-(u_max**2))) + b * (
             scipy.special.erf(u_max) - scipy.special.erf(u_min)
         )

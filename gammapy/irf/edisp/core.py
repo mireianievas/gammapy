@@ -4,6 +4,8 @@ import scipy.special
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
+from matplotlib.colors import PowerNorm
 from gammapy.maps import MapAxes, MapAxis, RegionGeom
 from ..core import IRF
 
@@ -177,8 +179,6 @@ class EnergyDispersion2D(IRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         if offset is None:
@@ -226,9 +226,6 @@ class EnergyDispersion2D(IRF):
         ax : `~matplotlib.axes.Axes`
             Axis
         """
-        import matplotlib.pyplot as plt
-        from matplotlib.colors import PowerNorm
-
         kwargs.setdefault("cmap", "GnBu")
         kwargs.setdefault("norm", PowerNorm(gamma=0.5))
 
@@ -253,7 +250,7 @@ class EnergyDispersion2D(IRF):
         migra.format_plot_yaxis(ax=ax)
 
         if add_cbar:
-            label = "Probability density (A.U.)"
+            label = "Probability density [A.U]."
             ax.figure.colorbar(caxes, ax=ax, label=label)
 
         return ax
@@ -266,8 +263,6 @@ class EnergyDispersion2D(IRF):
         figsize : (float, float)
             Size of the resulting plot
         """
-        import matplotlib.pyplot as plt
-
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
         self.plot_bias(ax=axes[0])
         self.plot_migration(ax=axes[1])

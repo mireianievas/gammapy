@@ -2,6 +2,8 @@
 import numpy as np
 from astropy import units as u
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 from gammapy.utils.array import array_stats_str
 from ..core import IRF
 
@@ -139,8 +141,6 @@ class PSF(IRF):
              Axes to plot on.
 
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         energy_true = self.axes["energy_true"]
@@ -157,7 +157,8 @@ class PSF(IRF):
 
         energy_true.format_plot_xaxis(ax=ax)
         ax.legend(loc="best")
-        ax.set_ylabel(f"Containment radius ({ax.yaxis.units})")
+        ax.set_ylabel(f"Containment radius [{ax.yaxis.units}]")
+        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter("%.1e"))
         return ax
 
     def plot_containment_radius(self, ax=None, fraction=0.68, add_cbar=True, **kwargs):
@@ -179,8 +180,6 @@ class PSF(IRF):
         ax : `~matplotlib.pyplot.Axes`
              Axes to plot on.
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         energy = self.axes["energy_true"]
@@ -228,7 +227,6 @@ class PSF(IRF):
             True energy at which to plot the profile
 
         """
-        import matplotlib.pyplot as plt
         from gammapy.datasets.map import RAD_AXIS_DEFAULT
 
         ax = plt.gca() if ax is None else ax
@@ -255,9 +253,14 @@ class PSF(IRF):
         return ax
 
     def peek(self, figsize=(15, 5)):
-        """Quick-look summary plots."""
-        import matplotlib.pyplot as plt
+        """Quick-look summary plots.
 
+        Parameters
+        ----------
+        figsize : tuple
+            Size of the figure.
+
+        """
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
 
         self.plot_containment_radius(fraction=0.68, ax=axes[0])

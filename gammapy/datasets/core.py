@@ -210,7 +210,7 @@ class Datasets(collections.abc.MutableSequence):
 
         for dataset in self:
             if dataset.mask is not None:
-                value = dataset.mask.data.any()
+                value = np.any(dataset.mask)
             else:
                 value = True
             contributions.append(value)
@@ -484,7 +484,8 @@ class Datasets(collections.abc.MutableSequence):
         if not self.is_all_same_type:
             raise ValueError("Info table not supported for mixed dataset type.")
 
-        stacked = self[0].to_masked(name="stacked")
+        name = "stacked" if cumulative else self[0].name
+        stacked = self[0].to_masked(name=name)
 
         rows = [stacked.info_dict()]
 
@@ -523,7 +524,7 @@ class Datasets(collections.abc.MutableSequence):
         if np.all([table is None for table in tables]):
             meta_table = Table()
         else:
-            meta_table = vstack(tables)
+            meta_table = vstack(tables).copy()
 
         meta_table.add_column([d.tag for d in self], index=0, name="TYPE")
         meta_table.add_column(self.names, index=0, name="NAME")

@@ -2,7 +2,7 @@
 """FoV background estimation."""
 import logging
 import numpy as np
-from gammapy.maps import Map
+from gammapy.maps import Map, RegionGeom
 from gammapy.modeling import Fit
 from gammapy.modeling.models import FoVBackgroundModel, Model
 from ..core import Maker
@@ -15,17 +15,17 @@ log = logging.getLogger(__name__)
 class FoVBackgroundMaker(Maker):
     """Normalize template background on the whole field-of-view.
 
-    The dataset background model can be simply scaled (method="scale") or fitted (method="fit")
-    on the dataset counts.
+    The dataset background model can be simply scaled (method="scale") or fitted
+    (method="fit") on the dataset counts.
 
-    The normalization is performed outside the exclusion mask that is passed on init. This also internally 
-    takes into account the dataset fit mask.
+    The normalization is performed outside the exclusion mask that is passed on
+    init. This also internally takes into account the dataset fit mask.
 
     If a SkyModel is set on the input dataset its parameters
     are frozen during the fov re-normalization.
 
-    If the requirement (greater than) of either min_counts or min_npred_background is not satisfied,
-    the background will not be normalised
+    If the requirement (greater than) of either min_counts or min_npred_background
+    is not satisfied, the background will not be normalised
 
     Parameters
     ----------
@@ -34,12 +34,14 @@ class FoVBackgroundMaker(Maker):
     exclusion_mask : `~gammapy.maps.WcsNDMap`
         Exclusion mask
     spectral_model : SpectralModel or str
-        Reference norm spectral model to use for the `FoVBackgroundModel`, if none is defined
-        on the dataset. By default, use pl-norm.
+        Reference norm spectral model to use for the `FoVBackgroundModel`, if
+        none is defined on the dataset. By default, use pl-norm.
     min_counts : int
-        Minimum number of counts, or residuals counts if a SkyModel is set, required outside the exclusion region
+        Minimum number of counts, or residuals counts if a SkyModel is set,
+        required outside the exclusion region
     min_npred_background : float
-       Minimum number of predicted background counts required outside the exclusion region
+        Minimum number of predicted background counts required outside the
+        exclusion region
     """
 
     tag = "FoVBackgroundMaker"
@@ -134,7 +136,7 @@ class FoVBackgroundMaker(Maker):
         return mask
 
     def _make_masked_summed_counts(self, dataset):
-        """"Compute the sums of the counts, npred, and bacground maps within the mask"""
+        """ "Compute the sums of the counts, npred, and background maps within the mask"""
 
         npred = dataset.npred()
         mask = dataset.mask & ~np.isnan(npred)
@@ -148,7 +150,7 @@ class FoVBackgroundMaker(Maker):
         }
 
     def _verify_requirements(self, dataset):
-        """"Verify that the requirements of min_counts
+        """ "Verify that the requirements of min_counts
         and min_npred_background are satisfied"""
 
         total = self._make_masked_summed_counts(dataset)
@@ -163,13 +165,15 @@ class FoVBackgroundMaker(Maker):
             return False
         elif total["bkg"] <= self.min_npred_background:
             log.warning(
-                f"FoVBackgroundMaker failed. Only {int(total['bkg'])} background counts outside exclusion mask for {dataset.name}. "
+                f"FoVBackgroundMaker failed. Only {int(total['bkg'])} background"
+                f" counts outside exclusion mask for {dataset.name}. "
                 "Setting mask to False."
             )
             return False
         elif total["counts"] <= self.min_counts:
             log.warning(
-                f"FoVBackgroundMaker failed. Only {int(total['counts'])} counts outside exclusion mask for {dataset.name}. "
+                f"FoVBackgroundMaker failed. Only {int(total['counts'])} counts "
+                f"outside exclusion mask for {dataset.name}. "
                 "Setting mask to False."
             )
             return False
@@ -184,13 +188,18 @@ class FoVBackgroundMaker(Maker):
 
     def run(self, dataset, observation=None):
         """Run FoV background maker.
-        
+
         Parameters
         ----------
         dataset : `~gammapy.datasets.MapDataset`
             Input map dataset.
 
         """
+        if isinstance(dataset.counts.geom, RegionGeom):
+            raise TypeError(
+                "FoVBackgroundMaker does not support region based datasets."
+            )
+
         mask_fit = dataset.mask_fit
         if mask_fit:
             dataset.mask_fit *= self.make_exclusion_mask(dataset)

@@ -1,4 +1,5 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+import logging
 from pathlib import Path
 import pytest
 from numpy.testing import assert_allclose
@@ -10,8 +11,7 @@ from gammapy.analysis import Analysis, AnalysisConfig
 from gammapy.datasets import MapDataset, SpectrumDatasetOnOff
 from gammapy.maps import WcsGeom, WcsNDMap
 from gammapy.modeling.models import DatasetModels
-from gammapy.utils.testing import requires_data, requires_dependency
-import logging
+from gammapy.utils.testing import requires_data
 
 CONFIG_PATH = Path(__file__).resolve().parent / ".." / "config"
 MODEL_FILE = CONFIG_PATH / "model.yaml"
@@ -141,17 +141,16 @@ def test_set_models():
     analysis.set_models(models=models_str)
     assert isinstance(analysis.models, DatasetModels)
     assert len(analysis.models) == 2
-    assert  analysis.models.names == ['source', 'stacked-bkg']
+    assert analysis.models.names == ["source", "stacked-bkg"]
     with pytest.raises(TypeError):
         analysis.set_models(0)
-    
+
     new_source = analysis.models["source"].copy(name="source2")
     analysis.set_models(models=[new_source], extend=False)
     assert len(analysis.models) == 2
-    assert  analysis.models.names == ['source2', 'stacked-bkg']
+    assert analysis.models.names == ["source2", "stacked-bkg"]
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_analysis_1d():
     cfg = """
@@ -273,7 +272,6 @@ def test_exclusion_region(tmp_path):
     assert len(analysis.datasets) == 1
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_analysis_1d_stacked_no_fit_range():
     cfg = """
@@ -370,7 +368,6 @@ def test_analysis_no_bkg_3d(caplog):
         ]
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_analysis_3d():
     config = get_example_config("3d")
@@ -391,10 +388,10 @@ def test_analysis_3d():
     assert len(table) == 2
     dnde = table["dnde"].quantity
 
-    assert_allclose(dnde[0].value, 1.339052e-11, rtol=1e-2)
-    assert_allclose(dnde[-1].value, 2.772374e-13, rtol=1e-2)
-    assert_allclose(res["index"].value, 3.097613, rtol=1e-2)
-    assert_allclose(res["tilt"].value, -0.207792, rtol=1e-2)
+    assert_allclose(dnde[0].value, 1.2722e-11, rtol=1e-2)
+    assert_allclose(dnde[-1].value, 4.054128e-13, rtol=1e-2)
+    assert_allclose(res["index"].value, 2.772814, rtol=1e-2)
+    assert_allclose(res["tilt"].value, -0.133436, rtol=1e-2)
 
 
 @requires_data()
@@ -412,7 +409,8 @@ def test_analysis_3d_joint_datasets():
         rtol=1e-6,
     )
     assert_allclose(
-        analysis.datasets[0].background_model.spectral_model.tilt.value, 0.0,
+        analysis.datasets[0].background_model.spectral_model.tilt.value,
+        0.0,
         rtol=1e-6,
     )
     assert_allclose(
@@ -422,7 +420,6 @@ def test_analysis_3d_joint_datasets():
     )
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_usage_errors():
     config = get_example_config("1d")
@@ -443,12 +440,13 @@ def test_usage_errors():
         analysis.get_flux_points()
     with pytest.raises(ValidationError):
         analysis.config.datasets.type = "None"
-        
+
+
 @requires_data()
 def test_datasets_io(tmpdir):
     config = get_example_config("3d")
 
-    analysis = Analysis(config)    
+    analysis = Analysis(config)
     analysis.get_observations()
     analysis.get_datasets()
     models_str = Path(MODEL_FILE).read_text()
@@ -456,16 +454,16 @@ def test_datasets_io(tmpdir):
 
     config.general.datasets_file = tmpdir / "datasets.yaml"
     config.general.models_file = tmpdir / "models.yaml"
-    analysis.write_datasets()    
+    analysis.write_datasets()
     analysis = Analysis(config)
     analysis.read_datasets()
     assert len(analysis.datasets.models) == 2
-    assert  analysis.models.names == ['source', 'stacked-bkg']
+    assert analysis.models.names == ["source", "stacked-bkg"]
 
     analysis.models[0].parameters["index"].value = 3
     analysis.write_models()
     analysis = Analysis(config)
     analysis.read_datasets()
     assert len(analysis.datasets.models) == 2
-    assert  analysis.models.names == ['source', 'stacked-bkg']
+    assert analysis.models.names == ["source", "stacked-bkg"]
     assert analysis.models[0].parameters["index"].value == 3

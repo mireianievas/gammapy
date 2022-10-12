@@ -3,6 +3,7 @@
 import logging
 import numpy as np
 from scipy.stats import chi2, norm
+from iminuit import Minuit
 from .likelihood import Likelihood
 
 __all__ = [
@@ -30,8 +31,6 @@ class MinuitLikelihood(Likelihood):
 
 
 def setup_iminuit(parameters, function, store_trace=False, **kwargs):
-    from iminuit import Minuit
-
     minuit_func = MinuitLikelihood(function, parameters, store_trace=store_trace)
 
     pars, errors, limits = make_minuit_par_kwargs(parameters)
@@ -63,8 +62,8 @@ def optimize_iminuit(parameters, function, store_trace=False, **kwargs):
     store_trace : bool
         Store trace of the fit
     **kwargs : dict
-        Options passed to `iminuit.Minuit` constructor. If there is an entry 'migrad_opts', those options
-        will be passed to `iminuit.Minuit.migrad()`.
+        Options passed to `iminuit.Minuit` constructor. If there is an entry
+        'migrad_opts', those options will be passed to `iminuit.Minuit.migrad()`.
 
     Returns
     -------
@@ -166,7 +165,7 @@ def contour_iminuit(parameters, function, x, y, numpoints, sigma, **kwargs):
     idx_y = parameters.free_parameters.index(par_y)
     y = _make_parname(idx_y, par_y)
 
-    cl = chi2(2).cdf(sigma ** 2)
+    cl = chi2(2).cdf(sigma**2)
     contour = minuit.mncontour(x=x, y=y, size=numpoints, cl=cl)
     # TODO: add try and except to get the success
     return {

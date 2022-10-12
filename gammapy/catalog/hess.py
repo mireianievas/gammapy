@@ -208,7 +208,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
         ss += "{:<20s} : {:.2f}\n".format("Energy threshold", d["Energy_Threshold"])
 
         val, err = d["Flux_Map"].value, d["Flux_Map_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: 501
             "Source flux (>1 TeV)",
             val / FF,
             err / FF,
@@ -287,7 +287,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_Int_1TeV"].value
         err = d["Flux_Spec_Int_1TeV_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "Best-fit model flux(> 1 TeV)",
             val / FF,
             err / FF,
@@ -312,7 +312,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_PL_Diff_Pivot"].value
         err = d["Flux_Spec_PL_Diff_Pivot_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "Flux at pivot energy",
             val / FF,
             err / FF,
@@ -322,7 +322,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_PL_Int_1TeV"].value
         err = d["Flux_Spec_PL_Int_1TeV_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "PL   Flux(> 1 TeV)",
             val / FF,
             err / FF,
@@ -332,7 +332,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_PL_Diff_1TeV"].value
         err = d["Flux_Spec_PL_Diff_1TeV_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "PL   Flux(@ 1 TeV)",
             val / FF,
             err / FF,
@@ -353,7 +353,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_ECPL_Diff_1TeV"].value
         err = d["Flux_Spec_ECPL_Diff_1TeV_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1 TeV^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "ECPL   Flux(@ 1 TeV)",
             val / FF,
             err / FF,
@@ -363,7 +363,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         val = d["Flux_Spec_ECPL_Int_1TeV"].value
         err = d["Flux_Spec_ECPL_Int_1TeV_Err"].value
-        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(
+        ss += "{:<20s} : ({:.3f} +/- {:.3f}) x 10^-12 cm^-2 s^-1  = ({:.2f} +/- {:.2f}) % Crab\n".format(  # noqa: E501
             "ECPL   Flux(> 1 TeV)",
             val / FF,
             err / FF,
@@ -381,7 +381,7 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
 
         # Use Gaussian analytical error propagation,
         # tested against the uncertainties package
-        err = err / val ** 2
+        err = err / val**2
         val = 1.0 / val
 
         ss += "{:<20s} : {:.2f} +/- {:.2f} TeV\n".format("ECPL E_cut", val, err)
@@ -565,7 +565,9 @@ class SourceCatalogObjectHGPS(SourceCatalogObject):
         """
 
         spatial_type = self.data["Spatial_Model"]
-        missing_size = spatial_type=="Gaussian" and self.spatial_model().sigma.value==0
+        missing_size = (
+            spatial_type == "Gaussian" and self.spatial_model().sigma.value == 0
+        )
         if spatial_type in {"2-Gaussian", "3-Gaussian"} or missing_size:
             models = []
             spectral_model = self.spectral_model(which=which)
@@ -645,6 +647,7 @@ class SourceCatalogHGPS(SourceCatalog):
 
     Then you can load it up like this:
 
+    >>> import matplotlib.pyplot as plt
     >>> from gammapy.catalog import SourceCatalogHGPS
     >>> filename = '$GAMMAPY_DATA/catalogs/hgps_catalog_v1.fits.gz'
     >>> cat = SourceCatalogHGPS(filename)
@@ -765,12 +768,13 @@ class SourceCatalogHGPS(SourceCatalog):
 
     Access source spectral data and plot it:
 
-    >>> source.spectral_model().plot(source.energy_range)
-    <AxesSubplot:xlabel='Energy [TeV]', ylabel='dnde [1 / (cm2 s TeV)]'>
-    >>> source.spectral_model().plot_error(source.energy_range)
-    <AxesSubplot:xlabel='Energy [TeV]', ylabel='dnde [1 / (cm2 s TeV)]'>
-    >>> source.flux_points.plot()
-    <AxesSubplot:xlabel='Energy [TeV]', ylabel='dnde (1 / (cm2 s TeV))'>
+    >>> ax = plt.subplot()
+    >>> source.spectral_model().plot(source.energy_range, ax=ax) #doctest:+ELLIPSIS
+    <AxesSubplot:...xlabel='Energy [TeV]', ylabel='dnde [1 / (cm2 s TeV)]'>
+    >>> source.spectral_model().plot_error(source.energy_range, ax=ax) #doctest:+ELLIPSIS
+    <AxesSubplot:...xlabel='Energy [TeV]', ylabel='dnde [1 / (cm2 s TeV)]'>
+    >>> source.flux_points.plot(ax=ax) #doctest:+ELLIPSIS
+    <AxesSubplot:...xlabel='Energy [TeV]', ylabel='dnde [1 / (cm2 s TeV)]'>
 
     Gaussian component information can be accessed as well,
     either via the source, or via the catalog:

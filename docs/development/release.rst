@@ -47,7 +47,7 @@ Steps to prepare for the release (e.g. a week before) to check that things are i
 #. Check that the GitHub actions CI build is working.
 
    Links are at https://github.com/gammapy/gammapy#status-shields
-#. Check that the changelog is complete, by going through the list of GitHub issues for the
+#. Check that the release notes are complete, by going through the list of GitHub issues for the
    release milestone.
 #. Check the author list in CITATION.cff by running the ``dev/authors.py`` script. Manually
    fi any mismatches and finally sort by commits.
@@ -62,14 +62,9 @@ Steps for the day of the release:
 
    * `<https://docs.astropy.org/en/stable/development/astropy-package-template.html>`__.
 
-#. In the `gammapy repo <https://github.com/gammapy/gammapy>`__:
-
-   * Edit ``docs/getting-started/index.rst`` and change the version numbers in the text.
-
 #. In the `gammapy-docs repo <https://github.com/gammapy/gammapy-docs>`__:
 
-   * Copy the ``docs/dev`` folder as a new ``docs/0.14`` folder.
-   * In the ``0.14/docs/_downloads`` folder, rename ``notebooks-dev.tar`` file as ``notebooks-0.14.tar``.
+   * Follow the stable documentation procedure.
    * Edit ``stable/index.html`` to point to ``0.14/index.html``.
    * Edit ``stable/switcher.json`` to add the new version.
 
@@ -78,6 +73,7 @@ Steps for the day of the release:
    * Mention the release on the front page and on the news page.
    * In the ``download/install`` folder, copy ``gammapy-0.13-environment.yml`` file as ``gammapy-0.14-environment.yml``.
    * Adapt the dependency conda env name and versions as required in this file.
+   * Adapt the ``download/index.json`` file to include the new version.
 
 #. Finally:
 
@@ -90,9 +86,7 @@ Post release
 
 Steps for the day to announce the release:
 
-#. Send release announcement to the Gammapy mailing list and on Gammapy Slack
-   (using the version you drafted in
-   https://github.com/gammapy/gammapy/tree/master/dev/notes).
+#. Send release announcement to the Gammapy mailing list and on Gammapy Slack.
 #. If it's a big release with important new features or fixes,
    also send the release announcement to the following mailing lists
    (decide on a case by case basis, if it's relevant to the group of people):

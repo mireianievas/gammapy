@@ -16,17 +16,19 @@ variables:
 
 dependencies:
   # core dependencies
-  - python=3.7
+  - python=3.8
   - pip
   - astropy
   - click
   - cython
-  - numpy
+  - numpy<1.23
   - pydantic
   - pyyaml
-  - regions=0.5
-  - matplotlib>=3.4,<3.5
+  - regions>=0.5
+  - matplotlib>=3.4
   - scipy
+  - iminuit>=2.8.0
+  - extension-helpers
   # test dependencies
   - codecov
   - pytest=6
@@ -46,7 +48,6 @@ dependencies:
   - pandas
   - reproject
   - sherpa
-  - iminuit>=2.8.0
   # dev dependencies
   - black
   - codespell
@@ -65,7 +66,9 @@ dependencies:
   - sphinx-gallery
   - sphinx-panels
   - sphinx-copybutton
-  - pydata-sphinx-theme
+  - tox
+  - pydata-sphinx-theme==0.8.1
+  - pre-commit
   - twine
   - yamllint
   - nbformat

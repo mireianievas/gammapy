@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 # taken from the matploltlib documentation
 # https://matplotlib.org/3.1.0/gallery/images_contours_and_fields/image_annotated_heatmap.html#sphx-glr-gallery-images-contours-and-fields-image-annotated-heatmap-py
@@ -33,8 +34,6 @@ def plot_heatmap(
     **kwargs
         All other arguments are forwarded to `imshow`.
     """
-    import matplotlib.pyplot as plt
-
     if ax is None:
         ax = plt.gca()
 
@@ -79,7 +78,7 @@ def annotate_heatmap(
     valfmt="{x:.2f}",
     textcolors=("black", "white"),
     threshold=None,
-    **textkw
+    **textkw,
 ):
     """
     A function to annotate a heatmap.

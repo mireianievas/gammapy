@@ -1,9 +1,9 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Interpolation utilities"""
+from itertools import compress
 import numpy as np
 import scipy.interpolate
 from astropy import units as u
-from itertools import compress
 
 __all__ = [
     "interpolate_profile",
@@ -75,7 +75,7 @@ class ScaledRegularGridInterpolator:
             if method != "nearest":
                 raise ValueError(
                     "Interpolating scalar values requires using "
-                    "method='nearest' explicitely."
+                    "method='nearest' explicitly."
                 )
 
         if np.any(self._include_dimensions):

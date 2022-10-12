@@ -6,6 +6,7 @@ from astropy.io import fits
 from astropy.nddata import block_reduce
 from astropy.table import Table
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
 from gammapy.utils.interpolation import ScaledRegularGridInterpolator, StatProfileScale
 from gammapy.utils.scripts import make_path
 from ..axes import MapAxes
@@ -69,8 +70,6 @@ class RegionNDMap(Map):
         ax : `~matplotlib.pyplot.Axis`
             Axis used for plotting
         """
-        import matplotlib.pyplot as plt
-
         ax = ax or plt.gca()
 
         if axis_name is None:
@@ -98,7 +97,7 @@ class RegionNDMap(Map):
         )
 
         for label_axis, (idx, quantity) in zip(
-            labels, self.iter_by_axis(axis_name=axis.name)
+            labels, self.iter_by_axis_data(axis_name=axis.name)
         ):
             if isinstance(yerr_nd, tuple):
                 yerr = yerr_nd[0][idx], yerr_nd[1][idx]
@@ -147,8 +146,6 @@ class RegionNDMap(Map):
         ax : `~matplotlib.pyplot.Axis`
             Axis used for plotting
         """
-        import matplotlib.pyplot as plt
-
         ax = plt.gca() if ax is None else ax
 
         kwargs.setdefault("histtype", "step")
@@ -207,8 +204,6 @@ class RegionNDMap(Map):
         ax : `~matplotlib.pyplot.Axis`
             Axis used for plotting
         """
-        import matplotlib.pyplot as plt
-
         if not self.is_mask:
             raise ValueError("This is not a mask and cannot be plotted")
 
@@ -258,7 +253,7 @@ class RegionNDMap(Map):
             Dictionary to store meta data.
         wcs : `~astropy.wcs.WCS`
             WCS projection to use for local projections of the region
-        binsz_wcs: `~astropy.units.Quantity` ot str
+        binsz_wcs: `~astropy.units.Quantity` or str
             Bin size used for the default WCS, if wcs=None.
         data : `~numpy.ndarray`
             Data array
@@ -271,10 +266,10 @@ class RegionNDMap(Map):
         geom = RegionGeom.create(region=region, axes=axes, wcs=wcs, binsz_wcs=binsz_wcs)
         return cls(geom=geom, dtype=dtype, unit=unit, meta=meta, data=data)
 
-    def downsample(
-        self, factor, preserve_counts=True, axis_name="energy", weights=None
-    ):
+    def downsample(self, factor, preserve_counts=True, axis_name=None, weights=None):
         """Downsample the non-spatial dimension by a given factor.
+
+        By default the first axes is downsampled.
 
         Parameters
         ----------
@@ -296,7 +291,7 @@ class RegionNDMap(Map):
             Downsampled region map.
         """
         if axis_name is None:
-            return self.copy()
+            axis_name = self.geom.axes[0].name
 
         geom = self.geom.downsample(factor=factor, axis_name=axis_name)
 
@@ -316,13 +311,17 @@ class RegionNDMap(Map):
 
         return self._init_copy(geom=geom, data=data)
 
-    def upsample(self, factor, preserve_counts=True, axis_name="energy"):
+    def upsample(self, factor, order=0, preserve_counts=True, axis_name=None):
         """Upsample the non-spatial dimension by a given factor.
+
+        By default the first axes is upsampled.
 
         Parameters
         ----------
         factor : int
             Upsampling factor.
+        order : int
+            Order of the interpolation used for upsampling.
         preserve_counts : bool
             Preserve the integral over each bin.  This should be true
             if the RegionNDMap is an integral quantity (e.g. counts) and false if
@@ -335,6 +334,9 @@ class RegionNDMap(Map):
         map : `RegionNDMap`
             Upsampled region map.
         """
+        if axis_name is None:
+            axis_name = self.geom.axes[0].name
+
         geom = self.geom.upsample(factor=factor, axis_name=axis_name)
         data = self.interp_by_coord(geom.get_coord())
 
@@ -343,7 +345,7 @@ class RegionNDMap(Map):
 
         return self._init_copy(geom=geom, data=data)
 
-    def iter_by_axis(self, axis_name):
+    def iter_by_axis_data(self, axis_name):
         """Iterate data by axis
 
         Parameters
@@ -365,7 +367,7 @@ class RegionNDMap(Map):
             idx[idx_axis] = slice(None)
             yield tuple(idx), self.quantity[tuple(idx)]
 
-    def fill_by_idx(self, idx, weights=None):
+    def _resample_by_idx(self, idx, weights=None, preserve_counts=False):
         # inherited docstring
         # TODO: too complex, simplify!
         idx = pix_tuple_to_idx(idx)
@@ -381,15 +383,43 @@ class RegionNDMap(Map):
         idx = np.ravel_multi_index(idx, self.data.T.shape)
         idx, idx_inv = np.unique(idx, return_inverse=True)
         weights = np.bincount(idx_inv, weights=weights).astype(self.data.dtype)
+        if not preserve_counts:
+            weights /= np.bincount(idx_inv).astype(self.data.dtype)
         self.data.T.flat[idx] += weights
+
+    def fill_by_idx(self, idx, weights=None):
+        return self._resample_by_idx(idx, weights=weights, preserve_counts=True)
 
     def get_by_idx(self, idxs):
         # inherited docstring
         return self.data[idxs[::-1]]
 
     def interp_by_coord(self, coords, **kwargs):
-        # inherited docstring
-        pix = self.geom.coord_to_pix(coords)
+        """Interpolate map values at the given map coordinates.
+
+        Parameters
+        ----------
+        coords : tuple, dict or `~gammapy.maps.MapCoord`
+            Coordinate arrays for each dimension of the map.  Tuple
+            should be ordered as (lon, lat, x_0, ..., x_n) where x_i
+            are coordinates for non-spatial dimensions of the map.
+            "lon" and "lat" are optional and will be taken at the center
+            of the region by default.
+        method : {"linear", "nearest"}
+            Method to interpolate data values. By default linear
+            interpolation is performed.
+        fill_value : None or float value
+            The value to use for points outside of the interpolation domain.
+            If None, values outside the domain are extrapolated.
+        values_scale : {"lin", "log", "sqrt"}
+            Optional value scaling.
+
+        Returns
+        -------
+        vals : `~numpy.ndarray`
+            Interpolated pixel values.
+        """
+        pix = self.geom.coord_to_pix(coords=coords)
         return self.interp_by_pix(pix, **kwargs)
 
     def interp_by_pix(self, pix, **kwargs):
@@ -636,8 +666,10 @@ class RegionNDMap(Map):
         # TODO: re-think stacking of regions. Is making the union reasonable?
         # self.geom.union(other.geom)
         if nan_to_num:
-            data = data.copy()
-            data[~np.isfinite(data)] = 0
+            not_finite = ~np.isfinite(data)
+            if np.any(not_finite):
+                data = data.copy()
+                data[not_finite] = 0
         if weights is not None:
             if not other.geom.to_image() == weights.geom.to_image():
                 raise ValueError("Incompatible geoms between map and weights")
@@ -675,7 +707,7 @@ class RegionNDMap(Map):
             table["CHANNEL"] = np.arange(energy_axis.nbin, dtype=np.int16)
             table["COUNTS"] = np.array(data, dtype=np.int32)
 
-            # see https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007/node6.html
+            # see https://heasarc.gsfc.nasa.gov/docs/heasarc/ofwg/docs/spectra/ogip_92_007/node6.html  # noqa: E501
             table.meta = {
                 "EXTNAME": "SPECTRUM",
                 "telescop": "unknown",

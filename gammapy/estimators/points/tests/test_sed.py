@@ -3,9 +3,11 @@ import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 from astropy import units as u
-from astropy.coordinates import SkyCoord, EarthLocation
+from astropy.coordinates import EarthLocation, SkyCoord
+from astropy.table import Table
 from gammapy.data import Observation
 from gammapy.datasets import MapDataset, SpectrumDatasetOnOff
+from gammapy.datasets.spectrum import SpectrumDataset
 from gammapy.estimators import FluxPoints, FluxPointsEstimator
 from gammapy.irf import EDispKernelMap, EffectiveAreaTable2D, load_cta_irfs
 from gammapy.makers import MapDatasetMaker
@@ -19,7 +21,7 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
     SkyModel,
 )
-from gammapy.utils.testing import requires_data, requires_dependency
+from gammapy.utils.testing import requires_data
 
 
 # TODO: use pre-generated data instead
@@ -180,7 +182,6 @@ def test_str(fpe_pwl):
     assert "FluxPointsEstimator" in str(fpe)
 
 
-@requires_dependency("iminuit")
 def test_run_pwl(fpe_pwl, tmpdir):
     datasets, fpe = fpe_pwl
 
@@ -262,7 +263,6 @@ def test_run_pwl(fpe_pwl, tmpdir):
     assert fp_new.meta["sed_type_init"] == "likelihood"
 
 
-@requires_dependency("iminuit")
 def test_run_ecpl(fpe_ecpl, tmpdir):
     datasets, fpe = fpe_ecpl
 
@@ -306,7 +306,6 @@ def test_run_ecpl(fpe_ecpl, tmpdir):
     assert fp_new.meta["sed_type_init"] == "likelihood"
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_run_map_pwl(fpe_map_pwl, tmpdir):
     datasets, fpe = fpe_map_pwl
@@ -350,7 +349,6 @@ def test_run_map_pwl(fpe_map_pwl, tmpdir):
     assert fp_new.meta["sed_type_init"] == "likelihood"
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_run_map_pwl_reoptimize(fpe_map_pwl_reoptimize):
     datasets, fpe = fpe_map_pwl_reoptimize
@@ -376,7 +374,15 @@ def test_run_map_pwl_reoptimize(fpe_map_pwl_reoptimize):
     assert_allclose(actual, [9.788123, 0.486066, 17.603708], rtol=1e-2)
 
 
-@requires_dependency("iminuit")
+@requires_data()
+def test_reoptimize_no_free_parameters(fpe_pwl, caplog):
+    datasets, fpe = fpe_pwl
+    fpe.reoptimize = True
+    with pytest.raises(ValueError, match="No free parameters for fitting"):
+        fpe.run(datasets)
+    fpe.reoptimize = False
+
+
 @requires_data()
 def test_flux_points_estimator_no_norm_scan(fpe_pwl, tmpdir):
     datasets, fpe = fpe_pwl
@@ -426,6 +432,7 @@ def test_mask_shape():
     dataset_2.psf = None
     dataset_1.edisp = None
     dataset_2.edisp = None
+    dataset_2.mask_safe = None
 
     model = SkyModel(
         spectral_model=PowerLawSpectralModel(),
@@ -442,9 +449,9 @@ def test_mask_shape():
     table = fp.to_table()
 
     assert_allclose(table["counts"], 0)
+    assert_allclose(table["npred"], 0)
 
 
-@requires_dependency("iminuit")
 def test_run_pwl_parameter_range(fpe_pwl):
     pl = PowerLawSpectralModel(amplitude="1e-16 cm-2s-1TeV-1")
 
@@ -484,7 +491,6 @@ def test_run_pwl_parameter_range(fpe_pwl):
     assert_allclose(actual, [-1.006081, -0.364848, -0.927819], rtol=1e-2)
 
 
-@requires_dependency("iminuit")
 def test_flux_points_estimator_small_edges():
     pl = PowerLawSpectralModel(amplitude="1e-11 cm-2s-1TeV-1")
 
@@ -498,3 +504,59 @@ def test_flux_points_estimator_small_edges():
     assert_allclose(fp.ts.data[0, 0, 0], 2156.96959291)
     assert np.isnan(fp.ts.data[1, 0, 0])
     assert np.isnan(fp.npred.data[1, 0, 0])
+
+
+def test_flux_points_recompute_ul(fpe_pwl):
+    datasets, fpe = fpe_pwl
+    fpe.selection_optional = ["all"]
+    fp = fpe.run(datasets)
+    assert_allclose(
+        fp.flux_ul.data,
+        [[[2.629819e-12]], [[9.319243e-13]], [[9.004449e-14]]],
+        rtol=1e-3,
+    )
+    fp1 = fp.recompute_ul(n_sigma_ul=4)
+    assert_allclose(
+        fp1.flux_ul.data,
+        [[[2.93166296e-12]], [[1.05421128e-12]], [[1.22660055e-13]]],
+        rtol=1e-3,
+    )
+    assert fp1.meta["n_sigma_ul"] == 4
+
+    # check that it returns a sensible value
+    fp2 = fp.recompute_ul(n_sigma_ul=2)
+    assert_allclose(fp2.flux_ul.data, fp.flux_ul.data, rtol=1e-2)
+
+
+def test_fpe_non_aligned_energy_axes():
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=10)
+    geom_1 = RegionGeom.create("icrs;circle(0, 0, 0.1)", axes=[energy_axis])
+    dataset_1 = SpectrumDataset.create(geom=geom_1)
+
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=7)
+    geom_2 = RegionGeom.create("icrs;circle(0, 0, 0.1)", axes=[energy_axis])
+    dataset_2 = SpectrumDataset.create(geom=geom_2)
+
+    fpe = FluxPointsEstimator(energy_edges=[1, 3, 10] * u.TeV)
+
+    with pytest.raises(ValueError, match="must have aligned energy axes"):
+        fpe.run(datasets=[dataset_1, dataset_2])
+
+
+def test_fpe_non_uniform_datasets():
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=10)
+    geom_1 = RegionGeom.create("icrs;circle(0, 0, 0.1)", axes=[energy_axis])
+    dataset_1 = SpectrumDataset.create(
+        geom=geom_1, meta_table=Table({"TELESCOP": ["CTA"]})
+    )
+
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=10)
+    geom_2 = RegionGeom.create("icrs;circle(0, 0, 0.1)", axes=[energy_axis])
+    dataset_2 = SpectrumDataset.create(
+        geom=geom_2, meta_table=Table({"TELESCOP": ["CTB"]})
+    )
+
+    fpe = FluxPointsEstimator(energy_edges=[1, 3, 10] * u.TeV)
+
+    with pytest.raises(ValueError, match="same value of the 'TELESCOP' meta keyword"):
+        fpe.run(datasets=[dataset_1, dataset_2])

@@ -30,10 +30,10 @@ class SimplePulsar:
         Radius of the pulsar (cm)
     """
 
-    def __init__(self, P, P_dot, I=DEFAULT_I, R=DEFAULT_R):
+    def __init__(self, P, P_dot, I=DEFAULT_I, R=DEFAULT_R):  # noqa: E741
         self.P = Quantity(P, "s")
         self.P_dot = P_dot
-        self.I = I
+        self.I = I  # noqa: E741
         self.R = R
 
     @property
@@ -42,7 +42,7 @@ class SimplePulsar:
 
         .. math:: \dot{L} = 4\pi^2 I \frac{\dot{P}}{P^{3}}
         """
-        return 4 * np.pi ** 2 * self.I * self.P_dot / self.P ** 3
+        return 4 * np.pi**2 * self.I * self.P_dot / self.P**3
 
     @property
     def tau(self):
@@ -79,12 +79,19 @@ class Pulsar:
     """
 
     def __init__(
-        self, P_0="0.1 s", B="1e10 G", n=3, I=DEFAULT_I, R=DEFAULT_R, age=None, L_0=None
+        self,
+        P_0="0.1 s",
+        B="1e10 G",
+        n=3,
+        I=DEFAULT_I,  # noqa: E741
+        R=DEFAULT_R,
+        age=None,
+        L_0=None,  # noqa: E741
     ):
         P_0 = Quantity(P_0, "s")
         B = Quantity(B, "G")
 
-        self.I = I
+        self.I = I  # noqa: E741
         self.R = R
         self.P_0 = P_0
         self.B = B
@@ -95,7 +102,7 @@ class Pulsar:
         if age is not None:
             self.age = Quantity(age, "yr")
         if L_0 is None:
-            self.L_0 = 4 * np.pi ** 2 * self.I * self.P_dot_0 / self.P_0 ** 3
+            self.L_0 = 4 * np.pi**2 * self.I * self.P_dot_0 / self.P_0**3
 
     def luminosity_spindown(self, t):
         r"""Spin down luminosity.
@@ -154,7 +161,7 @@ class Pulsar:
             Time after birth of the pulsar.
         """
         t = Quantity(t, "yr")
-        return self.B ** 2 / (self.period(t) * B_CONST ** 2)
+        return self.B**2 / (self.period(t) * B_CONST**2)
 
     def tau(self, t):
         r"""Characteristic age at real age t.

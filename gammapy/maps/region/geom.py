@@ -4,21 +4,33 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.io import fits
-from astropy.table import Table
+from astropy.table import QTable, Table
 from astropy.utils import lazyproperty
+from astropy.visualization.wcsaxes import WCSAxes
 from astropy.wcs.utils import (
     proj_plane_pixel_area,
     proj_plane_pixel_scales,
     wcs_to_celestial_frame,
 )
-from regions import CompoundSkyRegion, PixCoord, PointSkyRegion, Regions, SkyRegion
+from regions import (
+    CompoundSkyRegion,
+    PixCoord,
+    PointSkyRegion,
+    RectanglePixelRegion,
+    RectangleSkyRegion,
+    Regions,
+    SkyRegion,
+)
+import matplotlib.pyplot as plt
 from gammapy.utils.regions import (
     compound_region_center,
     compound_region_to_regions,
     regions_to_compound_region,
 )
+from gammapy.visualization.utils import ARTIST_TO_LINE_PROPERTIES
 from ..axes import MapAxes
-from ..core import Map, MapCoord
+from ..coord import MapCoord
+from ..core import Map
 from ..geom import Geom, pix_tuple_to_idx
 from ..utils import _check_width
 from ..wcs import WcsGeom
@@ -60,7 +72,7 @@ class RegionGeom(Geom):
     def __init__(self, region, axes=None, wcs=None, binsz_wcs="0.1 deg"):
         self._region = region
         self._axes = MapAxes.from_default(axes, n_spatial_axes=2)
-        self._binsz_wcs = binsz_wcs
+        self._binsz_wcs = u.Quantity(binsz_wcs)
 
         if wcs is None and region is not None:
             if isinstance(region, CompoundSkyRegion):
@@ -121,7 +133,12 @@ class RegionGeom(Geom):
         for region_pix in regions_pix[1:]:
             bbox = bbox.union(region_pix.bounding_box)
 
-        rectangle_pix = bbox.to_region()
+        try:
+            rectangle_pix = bbox.to_region()
+        except ValueError:
+            rectangle_pix = RectanglePixelRegion(
+                center=PixCoord(*bbox.center[::-1]), width=1, height=1
+            )
         return rectangle_pix.to_sky(self.wcs)
 
     @property
@@ -142,6 +159,12 @@ class RegionGeom(Geom):
         """`~regions.SkyRegion` object that defines the spatial component
         of the region geometry"""
         return self._region
+
+    @property
+    def is_all_point_sky_regions(self):
+        """Whether regions are all point regions"""
+        regions = compound_region_to_regions(self.region)
+        return np.all([isinstance(_, PointSkyRegion) for _ in regions])
 
     @property
     def axes(self):
@@ -201,7 +224,18 @@ class RegionGeom(Geom):
             raise ValueError("Region definition required.")
 
         coords = MapCoord.create(coords, frame=self.frame, axis_names=self.axes.names)
-        return self.region.contains(coords.skycoord, self.wcs)
+
+        if isinstance(self.region, PointSkyRegion):
+            # the point region is approximated by 1x1 pixel here
+            region = RectangleSkyRegion(
+                center=self.center_skydir,
+                width=self.binsz_wcs[0],
+                height=self.binsz_wcs[1],
+            )
+        else:
+            region = self.region
+
+        return region.contains(coords.skycoord, self.wcs)
 
     def contains_wcs_pix(self, pix):
         """Check if a given wcs pixel coordinate is contained in the region.
@@ -302,7 +336,7 @@ class RegionGeom(Geom):
             raise ValueError("Region definition required.")
 
         # compound regions do not implement area()
-        # so we use the mask represenation and estimate the area
+        # so we use the mask representation and estimate the area
         # from the pixels in the mask using oversampling
         if isinstance(self.region, CompoundSkyRegion):
             # oversample by a factor of ten
@@ -315,7 +349,7 @@ class RegionGeom(Geom):
             # all other types of regions should implement area
             area = self.region.to_pixel(self.wcs).area
 
-        solid_angle = area * proj_plane_pixel_area(self.wcs) * u.deg ** 2
+        solid_angle = area * proj_plane_pixel_area(self.wcs) * u.deg**2
         return solid_angle.to("sr")
 
     def bin_volume(self):
@@ -492,12 +526,28 @@ class RegionGeom(Geom):
         return tuple(idxs)
 
     def coord_to_pix(self, coords):
+        # inherited docstring
+        if isinstance(coords, tuple) and len(coords) == len(self.axes):
+            skydir = self.center_skydir.transform_to(self.frame)
+            coords = (skydir.data.lon, skydir.data.lat) + coords
+        elif isinstance(coords, dict):
+            valid_keys = ["lon", "lat", "skycoord"]
+            if not any([_ in coords for _ in valid_keys]):
+                coords.setdefault("skycoord", self.center_skydir)
+
         coords = MapCoord.create(coords, frame=self.frame, axis_names=self.axes.names)
 
         if self.region is None:
             pix = (0, 0)
         else:
-            in_region = self.region.contains(coords.skycoord, wcs=self.wcs)
+            # TODO: remove once fix is available in regions
+            if isinstance(self.region, PointSkyRegion):
+                point_region = self.region.to_pixel(self.wcs)
+                point_region.meta["include"] = False
+                pix_coord = PixCoord.from_sky(coords.skycoord, self.wcs)
+                in_region = point_region.contains(pix_coord)
+            else:
+                in_region = self.region.contains(coords.skycoord, wcs=self.wcs)
 
             x = np.zeros(coords.skycoord.shape)
             x[~in_region] = np.nan
@@ -560,28 +610,52 @@ class RegionGeom(Geom):
             f"\tcenter     : {lon:.1f} deg, {lat:.1f} deg\n"
         )
 
-    def __eq__(self, other):
-        # check overall shape and axes compatibility
+    def is_allclose(self, other, rtol_axes=1e-6, atol_axes=1e-6):
+        """Compare two data IRFs for equivalency
+
+        Parameters
+        ----------
+        other : `RegionGeom`
+            Geom to compare against.
+        rtol_axes : float
+            Relative tolerance for the axes comparison.
+        atol_axes : float
+            Relative tolerance for the axes comparison.
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether the geometry is all close.
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
         if self.data_shape != other.data_shape:
             return False
 
-        for axis, otheraxis in zip(self.axes, other.axes):
-            if axis != otheraxis:
-                return False
+        axes_eq = self.axes.is_allclose(other.axes, rtol=rtol_axes, atol=atol_axes)
+        # TODO: compare regions based on masks...
+        regions_eq = True
+        return axes_eq and regions_eq
 
-        # TODO: compare regions
-        return True
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other=other)
 
     def _to_region_table(self):
         """Export region to a FITS region table."""
         if self.region is None:
             raise ValueError("Region definition required.")
 
-        # TODO: make this a to_hdulist() method
         region_list = compound_region_to_regions(self.region)
+
         pixel_region_list = []
+
         for reg in region_list:
             pixel_region_list.append(reg.to_pixel(self.wcs))
+
         table = Regions(pixel_region_list).serialize(format="fits")
 
         header = WcsGeom(wcs=self.wcs, npix=self.wcs.array_shape).to_header()
@@ -677,16 +751,23 @@ class RegionGeom(Geom):
             region_hdu = hdu + "_" + region_hdu
 
         if region_hdu in hdulist:
-            region_table = Table.read(hdulist[region_hdu])
-            wcs = WcsGeom.from_header(region_table.meta).wcs
+            try:
+                region_table = QTable.read(hdulist[region_hdu])
+                regions_pix = Regions.parse(data=region_table, format="fits")
+            except TypeError:
+                # TODO: this is needed to support regions=0.5
+                region_table = Table.read(hdulist[region_hdu])
+                regions_pix = Regions.parse(data=region_table, format="fits")
 
+            wcs = WcsGeom.from_header(region_table.meta).wcs
             regions = []
 
-            for reg in Regions.parse(data=region_table, format="fits"):
+            for region_pix in regions_pix:
                 # TODO: remove workaround once regions issue with fits serialization is sorted out
                 # see https://github.com/astropy/regions/issues/400
-                reg.meta["include"] = True
-                regions.append(reg.to_sky(wcs))
+                region_pix.meta["include"] = True
+                regions.append(region_pix.to_sky(wcs))
+
             region = regions_to_compound_region(regions)
         else:
             region, wcs = None, None
@@ -713,7 +794,7 @@ class RegionGeom(Geom):
             else:
                 self._region = other.region
 
-    def plot_region(self, ax=None, **kwargs):
+    def plot_region(self, ax=None, kwargs_point=None, path_effect=None, **kwargs):
         """Plot region in the sky.
 
         Parameters
@@ -722,6 +803,11 @@ class RegionGeom(Geom):
             Axes to plot on. If no axes are given,
             the region is shown using the minimal
             equivalent WCS geometry.
+        kwargs_point : dict
+            Keyword arguments passed to `~matplotlib.lines.Line2D` for plotting
+            of point sources
+        path_effect : `~matplotlib.patheffects.PathEffect`
+            Path effect applied to artists and lines.
         **kwargs : dict
             Keyword arguments forwarded to `~regions.PixelRegion.as_artist`
 
@@ -730,9 +816,7 @@ class RegionGeom(Geom):
         ax : `~astropy.visualization.WCSAxes`
             Axes to plot on.
         """
-        from astropy.visualization.wcsaxes import WCSAxes
-        import matplotlib.pyplot as plt
-        from matplotlib.collections import PatchCollection
+        kwargs_point = kwargs_point or {}
 
         if ax is None:
             ax = plt.gca()
@@ -740,14 +824,29 @@ class RegionGeom(Geom):
             if not isinstance(ax, WCSAxes):
                 ax.remove()
                 wcs_geom = self.to_wcs_geom()
-                m = Map.from_geom(wcs_geom.to_image())
-                ax = m.plot(add_cbar=False)
+                m = Map.from_geom(geom=wcs_geom.to_image())
+                ax = m.plot(add_cbar=False, vmin=-1, vmax=0)
 
-        regions = compound_region_to_regions(self.region)
-        artists = [region.to_pixel(wcs=ax.wcs).as_artist() for region in regions]
+        kwargs.setdefault("facecolor", "None")
+        kwargs.setdefault("edgecolor", "tab:blue")
+        kwargs_point.setdefault("marker", "*")
 
-        kwargs.setdefault("fc", "None")
+        for key, value in kwargs.items():
+            key_point = ARTIST_TO_LINE_PROPERTIES.get(key, None)
+            if key_point:
+                kwargs_point[key_point] = value
 
-        patches = PatchCollection(artists, **kwargs)
-        ax.add_collection(patches)
+        for region in compound_region_to_regions(self.region):
+            region_pix = region.to_pixel(wcs=ax.wcs)
+
+            if isinstance(region, PointSkyRegion):
+                artist = region_pix.as_artist(**kwargs_point)
+            else:
+                artist = region_pix.as_artist(**kwargs)
+
+            if path_effect:
+                artist.add_path_effect(path_effect)
+
+            ax.add_artist(artist)
+
         return ax

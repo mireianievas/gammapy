@@ -1,11 +1,12 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Cube models (axes: lon, lat, energy)."""
-import copy
+
 import numpy as np
 import astropy.units as u
 from astropy.nddata import NoOverlapError
 from gammapy.maps import Map, MapAxis, WcsGeom
 from gammapy.modeling import Covariance, Parameters
+from gammapy.modeling.covariance import copy_covariance
 from gammapy.modeling.parameter import _get_parameters_str
 from gammapy.utils.fits import LazyFitsData
 from gammapy.utils.scripts import make_name, make_path
@@ -69,6 +70,14 @@ class SkyModel(ModelBase):
         self.apply_irf = apply_irf
         self.datasets_names = datasets_names
         self._check_unit()
+
+        is_norm = np.array([par.is_norm for par in spectral_model.parameters])
+
+        if not np.any(is_norm):
+            raise ValueError(
+                "Spectral model used with SkyModel requires a norm type parameter."
+            )
+
         super().__init__()
 
     @property
@@ -369,10 +378,26 @@ class SkyModel(ModelBase):
 
         return Map.from_geom(geom=geom, data=value.value, unit=value.unit)
 
-    def copy(self, name=None, **kwargs):
-        """Copy SkyModel"""
+    @copy_covariance
+    def copy(self, name=None, copy_data=False, **kwargs):
+        """Copy sky model
+
+        Parameters
+        ----------
+        name : str
+            Assign a new name to the copied model.
+        copy_data : bool
+            Copy the data arrays attached to models.
+        **kwargs : dict
+            Keyword arguments forwarded to `SkyModel`
+
+        Returns
+        -------
+        model : `SkyModel`
+            Copied sky model.
+        """
         if self.spatial_model is not None:
-            spatial_model = self.spatial_model.copy()
+            spatial_model = self.spatial_model.copy(copy_data=copy_data)
         else:
             spatial_model = None
 
@@ -582,7 +607,8 @@ class FoVBackgroundModel(ModelBase):
         self._spectral_model = spectral_model
         super().__init__()
 
-    def contributes(self, *args, **kwargs):
+    @staticmethod
+    def contributes(*args, **kwargs):
         """FoV background models always contribute"""
         return True
 
@@ -628,13 +654,26 @@ class FoVBackgroundModel(ModelBase):
         """Evaluate model"""
         return self.spectral_model(energy)
 
-    def copy(self, **kwargs):
-        """Copy SkyModel"""
-        kwargs.pop("name")
-        if "spectral_model" not in kwargs:
-            kwargs.setdefault("spectral_model", self.spectral_model.copy())
-        if "dataset_name" not in kwargs:
-            kwargs.setdefault("dataset_name", self.datasets_names[0])
+    @copy_covariance
+    def copy(self, name=None, copy_data=False, **kwargs):
+        """Copy FoVBackgroundModel
+
+        Parameters
+        ----------
+        name : str
+            Ignored, present for API compatibility.
+        copy_data : bool
+            Ignored, present for API compatibility.
+        **kwargs : dict
+            Keyword arguments forwarded to `FoVBackgroundModel`
+
+        Returns
+        -------
+        model : `FoVBackgroundModel`
+            Copied FoV background model.
+        """
+        kwargs.setdefault("spectral_model", self.spectral_model.copy())
+        kwargs.setdefault("dataset_name", self.datasets_names[0])
         return self.__class__(**kwargs)
 
     def to_dict(self, full_output=False):
@@ -705,6 +744,9 @@ class TemplateNPredModel(ModelBase):
     spectral_model : `~gammapy.modeling.models.SpectralModel`
         Normalized spectral model,
         default is `~gammapy.modeling.models.PowerLawNormSpectralModel`
+    copy_data : bool
+        Create a deepcopy of the map data or directly use the original. True by
+        default, can be turned to False to save memory in case of large maps.
     """
 
     tag = "TemplateNPredModel"
@@ -717,6 +759,7 @@ class TemplateNPredModel(ModelBase):
         name=None,
         filename=None,
         datasets_names=None,
+        copy_data=True,
     ):
         if isinstance(map, Map):
             axis = map.geom.axes["energy"]
@@ -725,7 +768,11 @@ class TemplateNPredModel(ModelBase):
                     'Need an integrated map, energy axis node_type="edges"'
                 )
 
-        self.map = map
+        if copy_data:
+            self.map = map.copy()
+        else:
+            self.map = map
+
         self._name = make_name(name)
         self.filename = filename
 
@@ -745,6 +792,31 @@ class TemplateNPredModel(ModelBase):
                 )
         self.datasets_names = datasets_names
         super().__init__()
+
+    @copy_covariance
+    def copy(self, name=None, copy_data=False, **kwargs):
+        """Copy template npred model.
+
+        Parameters
+        ----------
+        name : str
+            Assign a new name to the copied model.
+        copy_data : bool
+            Copy the data arrays attached to models.
+        **kwargs : dict
+            Keyword arguments forwarded to `TemplateNPredModel`
+
+        Returns
+        -------
+        model : `TemplateNPredModel`
+            Copied template npred model.
+        """
+        name = make_name(name)
+        kwargs.setdefault("map", self.map)
+        kwargs.setdefault("spectral_model", self.spectral_model.copy())
+        kwargs.setdefault("filename", self.filename)
+        kwargs.setdefault("datasets_names", self.datasets_names)
+        return self.__class__(name=name, copy_data=copy_data, **kwargs)
 
     @property
     def name(self):
@@ -805,6 +877,7 @@ class TemplateNPredModel(ModelBase):
         from gammapy.modeling.models import SPECTRAL_MODEL_REGISTRY
 
         spectral_data = data.get("spectral")
+
         if spectral_data is not None:
             model_class = SPECTRAL_MODEL_REGISTRY.get_cls(spectral_data["type"])
             spectral_model = model_class.from_dict(spectral_data)
@@ -831,12 +904,6 @@ class TemplateNPredModel(ModelBase):
             datasets_names=data.get("datasets_names"),
             filename=data.get("filename"),
         )
-
-    def copy(self, name=None):
-        """A deep copy."""
-        new = copy.deepcopy(self)
-        new._name = make_name(name)
-        return new
 
     def cutout(self, position, width, mode="trim", name=None):
         """Cutout background model.
@@ -924,7 +991,7 @@ class TemplateNPredModel(ModelBase):
 def create_fermi_isotropic_diffuse_model(filename, **kwargs):
     """Read Fermi isotropic diffuse model.
 
-    See `LAT Background models <https://fermi.gsfc.nasa.gov/ssc/data/access/lat/BackgroundModels.html>`_
+    See `LAT Background models <https://fermi.gsfc.nasa.gov/ssc/data/access/lat/BackgroundModels.html>`__  # noqa: E501
 
     Parameters
     ----------

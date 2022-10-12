@@ -1,11 +1,12 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+from copy import deepcopy
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 import astropy.units as u
 from gammapy.irf import Background2D, Background3D
 from gammapy.maps import MapAxis
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 @pytest.fixture(scope="session")
@@ -130,7 +131,6 @@ def test_background_3d_evaluate(bkg_3d):
     assert res.shape == (2, 2)
 
 
-@requires_dependency("matplotlib")
 def test_plot_at_energy(bkg_3d):
     with mpl_plot_check():
         bkg_3d.plot_at_energy(energy=[5] * u.TeV)
@@ -236,24 +236,27 @@ def test_bkg_3d_wrong_units():
     wrong_unit = u.cm**2 * u.s
     data = np.ones((2, 3, 3)) * wrong_unit
     with pytest.raises(ValueError) as error:
-        Background3D(axes=[energy_axis, fov_lon_axis, fov_lat_axis],
-                 data=data)
-    assert error.match("Error: (.*) is not an allowed unit. (.*) requires (.*) data quantities.")
+        Background3D(axes=[energy_axis, fov_lon_axis, fov_lat_axis], data=data)
+    assert error.match(
+        "Error: (.*) is not an allowed unit. (.*) requires (.*) data quantities."
+    )
 
 
 def test_bkg_2d_wrong_units():
     energy = [0.1, 10, 1000] * u.TeV
     energy_axis = MapAxis.from_energy_edges(energy)
-    
+
     offset_axis = MapAxis.from_edges([0, 1, 2], unit="deg", name="offset")
 
     wrong_unit = u.cm**2 * u.s
     data = np.ones((energy_axis.nbin, offset_axis.nbin)) * wrong_unit
     bkg2d_test = Background2D(axes=[energy_axis, offset_axis])
     with pytest.raises(ValueError) as error:
-        Background2D(axes=[energy_axis, offset_axis],
-                 data=data)
-        assert error.match(f"Error: {wrong_unit} is not an allowed unit. {bkg2d_test.tag} requires {bkg2d_test.default_unit} data quantities.")
+        Background2D(axes=[energy_axis, offset_axis], data=data)
+        assert error.match(
+            f"Error: {wrong_unit} is not an allowed unit. {bkg2d_test.tag}"
+            f" requires {bkg2d_test.default_unit} data quantities."
+        )
 
 
 def test_background_2d_read_missing_hducls():
@@ -373,7 +376,6 @@ def test_to_3d(bkg_2d):
     assert b2.unit == bkg_2d.unit
 
 
-@requires_dependency("matplotlib")
 def test_plot(bkg_2d):
     with mpl_plot_check():
         bkg_2d.plot()
@@ -389,3 +391,14 @@ def test_plot(bkg_2d):
 
     with mpl_plot_check():
         bkg_2d.peek()
+
+    with mpl_plot_check():
+        bkg_2d.plot_at_energy(energy=[1.0, 5.0] * u.TeV)
+
+
+def test_eq(bkg_2d):
+    bkg1 = deepcopy(bkg_2d)
+    assert bkg1 == bkg_2d
+
+    bkg1.data[0][0] = 10
+    assert not bkg1 == bkg_2d

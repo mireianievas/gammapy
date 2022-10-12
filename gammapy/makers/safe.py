@@ -17,6 +17,13 @@ log = logging.getLogger(__name__)
 class SafeMaskMaker(Maker):
     """Make safe data range mask for a given observation.
 
+
+    .. warning::
+
+         Currently some methods computing a safe energy range ("aeff-default",
+         "aeff-max" and "edisp-bias") determine a true energy range and apply
+         it to reconstructed energy, effectively neglecting the energy dispersion.
+
     Parameters
     ----------
     methods : {"aeff-default", "aeff-max", "edisp-bias", "offset-max", "bkg-peak"}
@@ -117,12 +124,23 @@ class SafeMaskMaker(Maker):
         if observation is None:
             raise ValueError("Method 'offset-max' requires an observation object.")
 
-        try:
-            energy_max = observation.aeff.meta["HI_THRES"] * u.TeV
-            energy_min = observation.aeff.meta["LO_THRES"] * u.TeV
-        except KeyError:
-            log.warning(f"No default thresholds defined for obs {observation.obs_id}")
-            energy_min, energy_max = None, None
+        energy_max = observation.aeff.meta.get("HI_THRES", None)
+
+        if energy_max:
+            energy_max = energy_max * u.TeV
+        else:
+            log.warning(
+                f"No default upper safe energy threshold defined for obs {observation.obs_id}"
+            )
+
+        energy_min = observation.aeff.meta.get("LO_THRES", None)
+
+        if energy_min:
+            energy_min = energy_min * u.TeV
+        else:
+            log.warning(
+                f"No default lower safe energy threshold defined for obs {observation.obs_id}"
+            )
 
         return dataset._geom.energy_mask(energy_min=energy_min, energy_max=energy_max)
 
@@ -159,6 +177,14 @@ class SafeMaskMaker(Maker):
             position = geom.center_skydir
 
         aeff = exposure.get_spectrum(position) / exposure.meta["livetime"]
+        if not np.any(aeff.data > 0.0):
+            log.warning(
+                f"Effective area is all zero at [{position.to_string('dms')}]. "
+                f"No safe energy band can be defined for the dataset '{dataset.name}': "
+                "setting `mask_safe` to all False."
+            )
+            return Map.from_geom(geom, data=False, dtype="bool")
+
         model = TemplateSpectralModel.from_region_map(aeff)
 
         energy_true = model.energy
@@ -205,16 +231,18 @@ class SafeMaskMaker(Maker):
 
         if isinstance(edisp, EDispKernelMap):
             if position:
-                edisp = edisp.get_edisp_kernel(position)
+                edisp = edisp.get_edisp_kernel(position=position)
             else:
-                edisp = edisp.get_edisp_kernel(self.position)
+                edisp = edisp.get_edisp_kernel(position=self.position)
         else:
             if position:
                 e_reco = dataset._geom.axes["energy"].edges
-                edisp = edisp.get_edisp_kernel(position, e_reco)
+                edisp = edisp.get_edisp_kernel(position=position, energy_axis=e_reco)
             else:
                 e_reco = dataset._geom.axes["energy"].edges
-                edisp = edisp.get_edisp_kernel(self.position, e_reco)
+                edisp = edisp.get_edisp_kernel(
+                    position=self.position, energy_axis=e_reco
+                )
 
         energy_min = edisp.get_bias_energy(self.bias_percent / 100)
         return geom.energy_mask(energy_min=energy_min[0])
@@ -223,9 +251,11 @@ class SafeMaskMaker(Maker):
     def make_mask_energy_bkg_peak(dataset):
         """Make safe energy mask based on the binned background.
 
-        The energy threshold is defined as the upper edge of the energy
-        bin with the highest predicted background rate. This method is motivated
-        by its use in the HESS DL3 validation paper: https://arxiv.org/pdf/1910.08088.pdf
+        The energy threshold is defined as the lower edge of the energy
+        bin with the highest predicted background rate. This is to ensure analysis in
+        a region where a  Powerlaw approximation to the background spectrum is valid.
+        The is motivated by its use in the HESS DL3
+        validation paper: https://arxiv.org/pdf/1910.08088.pdf
 
         Parameters
         ----------
@@ -241,7 +271,7 @@ class SafeMaskMaker(Maker):
         background_spectrum = dataset.npred_background().get_spectrum()
         idx = np.argmax(background_spectrum.data, axis=0)
         energy_axis = geom.axes["energy"]
-        energy_min = energy_axis.pix_to_coord(idx)
+        energy_min = energy_axis.edges[idx]
         return geom.energy_mask(energy_min=energy_min)
 
     @staticmethod
@@ -298,10 +328,10 @@ class SafeMaskMaker(Maker):
             mask_safe &= self.make_mask_energy_aeff_default(dataset, observation)
 
         if "aeff-max" in self.methods:
-            mask_safe &= self.make_mask_energy_aeff_max(dataset)
+            mask_safe &= self.make_mask_energy_aeff_max(dataset, observation)
 
         if "edisp-bias" in self.methods:
-            mask_safe &= self.make_mask_energy_edisp_bias(dataset)
+            mask_safe &= self.make_mask_energy_edisp_bias(dataset, observation)
 
         if "bkg-peak" in self.methods:
             mask_safe &= self.make_mask_energy_bkg_peak(dataset)

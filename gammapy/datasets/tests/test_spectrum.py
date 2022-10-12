@@ -20,12 +20,7 @@ from gammapy.modeling.models import (
 )
 from gammapy.utils.random import get_random_state
 from gammapy.utils.regions import compound_region_to_regions
-from gammapy.utils.testing import (
-    assert_time_allclose,
-    mpl_plot_check,
-    requires_data,
-    requires_dependency,
-)
+from gammapy.utils.testing import assert_time_allclose, mpl_plot_check, requires_data
 from gammapy.utils.time import time_ref_to_dict
 
 
@@ -70,6 +65,46 @@ def test_set_model(spectrum_dataset):
     assert spectrum_dataset.models["test"] is model
 
 
+def test_spectrum_dataset_fits_io(spectrum_dataset, tmp_path):
+    spectrum_dataset.meta_table = Table(
+        data=[[1.0 * u.h], [111]], names=["livetime", "obs_id"]
+    )
+    hdulist = spectrum_dataset.to_hdulist()
+    actual = [hdu.name for hdu in hdulist]
+    desired = [
+        "PRIMARY",
+        "COUNTS",
+        "COUNTS_BANDS",
+        "COUNTS_REGION",
+        "EXPOSURE",
+        "EXPOSURE_BANDS",
+        "EXPOSURE_REGION",
+        "BACKGROUND",
+        "BACKGROUND_BANDS",
+        "BACKGROUND_REGION",
+        "GTI",
+        "META_TABLE",
+    ]
+
+    assert actual == desired
+
+    spectrum_dataset.write(tmp_path / "test.fits")
+    dataset_new = SpectrumDataset.read(tmp_path / "test.fits", name="test")
+
+    assert_allclose(spectrum_dataset.counts.data, dataset_new.counts.data)
+    assert_allclose(
+        spectrum_dataset.npred_background().data, dataset_new.npred_background().data
+    )
+    assert dataset_new.edisp is None
+    assert dataset_new.edisp is None
+    assert dataset_new.name == "test"
+
+    assert_allclose(spectrum_dataset.exposure.data, dataset_new.exposure.data)
+    assert spectrum_dataset.counts.geom == dataset_new.counts.geom
+
+    assert_allclose(dataset_new.meta_table["obs_id"], 111)
+
+
 def test_npred_models():
     e_reco = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=3)
 
@@ -109,7 +144,6 @@ def test_npred_spatial_model(spectrum_dataset):
     assert spectrum_dataset.evaluators["test"].psf is None
 
 
-@requires_dependency("iminuit")
 def test_fit(spectrum_dataset):
     """Simple CASH fit to the on vector"""
     fit = Fit()
@@ -300,7 +334,6 @@ def test_spectrum_dataset_stack_nondiagonal_no_bkg(spectrum_dataset):
     assert_allclose(kernel.get_resolution(1 * u.TeV), 0.1581, atol=1e-2)
 
 
-@requires_dependency("matplotlib")
 def test_peek(spectrum_dataset):
     with mpl_plot_check():
         spectrum_dataset.peek()
@@ -455,7 +488,6 @@ class TestSpectrumOnOff:
         assert isinstance(ds, SpectrumDataset)
         assert_allclose(ds.background.data.sum(), 4)
 
-    @requires_dependency("matplotlib")
     def test_peek(self):
         dataset = self.dataset.copy()
         dataset.models = SkyModel(spectral_model=PowerLawSpectralModel())
@@ -463,20 +495,12 @@ class TestSpectrumOnOff:
         with mpl_plot_check():
             dataset.peek()
 
-    @requires_dependency("matplotlib")
     def test_plot_fit(self):
         dataset = self.dataset.copy()
         dataset.models = SkyModel(spectral_model=PowerLawSpectralModel())
 
         with mpl_plot_check():
             dataset.plot_fit()
-
-    @requires_dependency("matplotlib")
-    def test_plot_off_regions(self):
-        from gammapy.visualization import plot_spectrum_datasets_off_regions
-
-        with mpl_plot_check():
-            plot_spectrum_datasets_off_regions([self.dataset])
 
     def test_to_from_ogip_files(self, tmp_path):
         dataset = self.dataset.copy(name="test")
@@ -540,6 +564,13 @@ class TestSpectrumOnOff:
         assert newdataset.counts_off is None
         assert newdataset.edisp is None
         assert newdataset.gti is None
+
+    def test_spectrum_dataset_onoff_fits_io(self, tmp_path):
+        self.dataset.write(tmp_path / "test.fits", format="gadf")
+        d1 = SpectrumDatasetOnOff.read(tmp_path / "test.fits", format="gadf")
+        assert isinstance(d1.counts.geom, RegionGeom)
+        assert d1.exposure == self.dataset.exposure
+        assert_allclose(d1.counts_off.data, self.dataset.counts_off.data)
 
     def test_energy_mask(self):
         mask = self.dataset.counts.geom.energy_mask(
@@ -636,7 +667,6 @@ class TestSpectrumOnOff:
 
 
 @requires_data()
-@requires_dependency("iminuit")
 class TestSpectralFit:
     """Test fit in astrophysical scenario"""
 
@@ -671,7 +701,6 @@ class TestSpectralFit:
         for obs in self.datasets:
             obs.models = model
 
-    @requires_dependency("iminuit")
     def test_basic_results(self):
         self.set_model(self.pwl)
         result = self.fit.run([self.datasets[0]])
@@ -909,7 +938,8 @@ class TestSpectrumDatasetOnOffStack:
         obs1, obs2 = make_observation_list()
         obs1.stack(obs2)
         assert_allclose(obs1.alpha.data[0], 1.25 / 4.0)
-        # When the OFF stack observation counts=0, the alpha is averaged on the total OFF counts for each run.
+        # When the OFF stack observation counts=0, the alpha is averaged on the
+        # total OFF counts for each run.
         assert_allclose(obs1.alpha.data[1], 2.5 / 8.0)
 
     def test_stack_gti(self):
@@ -1007,7 +1037,6 @@ def test_spectrum_dataset_on_off_to_yaml(tmpdir):
     assert datasets_read[1].counts.data.sum() == datasets[1].counts.data.sum()
 
 
-@requires_dependency("iminuit")
 class TestFit:
     """Test fit on counts spectra without any IRFs"""
 

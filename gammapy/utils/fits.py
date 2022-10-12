@@ -1,10 +1,10 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
 import sys
+import astropy.units as u
 from astropy.coordinates import Angle, EarthLocation
 from astropy.io import fits
 from astropy.units import Quantity
-import astropy.units as u
 from .scripts import make_path
 
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class HDULocation:
 
             return EventList.read(filename, hdu=hdu)
         elif hdu_class == "gti":
-            from gammapy.data import GTI
+            from gammapy.data.gti import GTI
 
             return GTI.read(filename, hdu=hdu)
         elif hdu_class == "map":

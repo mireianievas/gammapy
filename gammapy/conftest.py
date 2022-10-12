@@ -2,35 +2,25 @@
 # this contains imports plugins that configure py.test for astropy tests.
 # by importing them here in conftest.py they are discoverable by py.test
 # no matter how it is invoked within the source tree.
-import pytest
 import os
+import pytest
 import numpy as np
-from pytest_astropy_header.display import PYTEST_HEADER_MODULES
+import astropy.units as u
+from astropy.time import Time
+import matplotlib
+from pytest_astropy_header.display import PYTEST_HEADER_MODULES, TESTED_VERSIONS
+from gammapy.data import GTI
+from gammapy.datasets import SpectrumDataset
+from gammapy.maps import MapAxis, RegionNDMap
 from gammapy.modeling.models import (
+    ConstantTemporalModel,
     Models,
     PowerLawSpectralModel,
-    ConstantTemporalModel,
     SkyModel,
 )
-from gammapy.maps import MapAxis, RegionNDMap
-from astropy.time import Time
-from gammapy.data import GTI
-import astropy.units as u
-from gammapy.datasets import SpectrumDataset
 
 # TODO: activate this again and handle deprecations in the code
 # enable_deprecations_as_exceptions(warnings_to_ignore_entire_module=["iminuit", "naima"])
-
-# Declare for which packages version numbers should be displayed
-# when running the tests
-PYTEST_HEADER_MODULES["cython"] = "cython"
-PYTEST_HEADER_MODULES["iminuit"] = "iminuit"
-PYTEST_HEADER_MODULES["astropy"] = "astropy"
-PYTEST_HEADER_MODULES["regions"] = "regions"
-PYTEST_HEADER_MODULES["healpy"] = "healpy"
-PYTEST_HEADER_MODULES["sherpa"] = "sherpa"
-PYTEST_HEADER_MODULES["gammapy"] = "gammapy"
-PYTEST_HEADER_MODULES["naima"] = "naima"
 
 
 def pytest_configure(config):
@@ -38,6 +28,18 @@ def pytest_configure(config):
     from gammapy.utils.testing import has_data
 
     config.option.astropy_header = True
+
+    # Declare for which packages version numbers should be displayed
+    # when running the tests
+    PYTEST_HEADER_MODULES["cython"] = "cython"
+    PYTEST_HEADER_MODULES["iminuit"] = "iminuit"
+    PYTEST_HEADER_MODULES["matplotlib"] = "matplotlib"
+    PYTEST_HEADER_MODULES["astropy"] = "astropy"
+    PYTEST_HEADER_MODULES["regions"] = "regions"
+    PYTEST_HEADER_MODULES["healpy"] = "healpy"
+    PYTEST_HEADER_MODULES["sherpa"] = "sherpa"
+    PYTEST_HEADER_MODULES["gammapy"] = "gammapy"
+    PYTEST_HEADER_MODULES["naima"] = "naima"
 
     print("")
     print("Gammapy test data availability:")
@@ -50,20 +52,18 @@ def pytest_configure(config):
     var = os.environ.get("GAMMAPY_DATA", "not set")
     print(f"GAMMAPY_DATA = {var}")
 
-    try:
-        # Switch to non-interactive plotting backend to avoid GUI windows
-        # popping up while running the tests.
-        import matplotlib
+    matplotlib.use("agg")
+    print('Setting matplotlib backend to "agg" for the tests.')
 
-        matplotlib.use("agg")
-        print('Setting matplotlib backend to "agg" for the tests.')
-    except ImportError:
-        pass
+    from . import __version__
+
+    packagename = os.path.basename(os.path.dirname(__file__))
+    TESTED_VERSIONS[packagename] = __version__
 
 
 @pytest.fixture()
 def spectrum_dataset():
-    #TODO: change the fixture scope to "session". This currently crashes fitting tests 
+    # TODO: change the fixture scope to "session". This currently crashes fitting tests
     name = "test"
     energy = np.logspace(-1, 1, 31) * u.TeV
     livetime = 100 * u.s

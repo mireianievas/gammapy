@@ -335,7 +335,8 @@ class WcsGeom(Geom):
         axes : list
             List of non-spatial axes.
         proj : string, optional
-            Any valid WCS projection type. Default is 'CAR' (cartesian).
+            Any valid WCS projection type. Default is 'CAR' (Plate-Carrée projection).
+            See `WCS supported projections <https://docs.astropy.org/en/stable/wcs/supported_projections.html>`__  # noqa: E501
         refpix : tuple
             Reference pixel of the projection.  If None this will be
             set to the center of the map.
@@ -881,7 +882,7 @@ class WcsGeom(Geom):
         if odd_npix:
             width = round_up_to_odd(width_npix)
 
-        dummy_data = np.empty(self.to_image().data_shape)
+        dummy_data = np.empty(self.to_image().data_shape, dtype=bool)
         c2d = Cutout2D(
             data=dummy_data,
             wcs=self.wcs,
@@ -1126,27 +1127,50 @@ class WcsGeom(Geom):
         # check WCS consistency with a priori tolerance of 1e-6
         return self.wcs.wcs.compare(other.wcs.wcs, cmp=2, tolerance=tolerance)
 
+    def is_allclose(self, other, rtol_axes=1e-6, atol_axes=1e-6, rtol_wcs=1e-6):
+        """Compare two data IRFs for equivalency
+
+        Parameters
+        ----------
+        other :  `WcsGeom`
+            Geom to compare against
+        rtol_axes : float
+            Relative tolerance for the axes comparison.
+        atol_axes : float
+            Relative tolerance for the axes comparison.
+        rtol_wcs : float
+            Relative tolerance for the wcs comparison.
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether the geometry is all close.
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
+        if self.data_shape != other.data_shape:
+            return False
+
+        axes_eq = self.axes.is_allclose(other.axes, rtol=rtol_axes, atol=atol_axes)
+
+        # check WCS consistency with a priori tolerance of 1e-6
+        # cmp=1 parameter ensures no comparison with ancillary information
+        # see https://github.com/astropy/astropy/pull/4522/files
+        wcs_eq = self.wcs.wcs.compare(other.wcs.wcs, cmp=1, tolerance=rtol_wcs)
+
+        return axes_eq and wcs_eq
+
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
-            return NotImplemented
+            return False
 
         if not (self.is_regular and other.is_regular):
             raise NotImplementedError(
                 "Geom comparison is not possible for irregular geometries."
             )
 
-        # check overall shape and axes compatibility
-        if self.data_shape != other.data_shape:
-            return False
-
-        for axis, otheraxis in zip(self.axes, other.axes):
-            if axis != otheraxis:
-                return False
-
-        # check WCS consistency with a priori tolerance of 1e-6
-        # cmp=1 parameter ensures no comparison with ancillary information
-        # see https://github.com/astropy/astropy/pull/4522/files
-        return self.wcs.wcs.compare(other.wcs.wcs, cmp=1, tolerance=1e-6)
+        return self.is_allclose(other=other, rtol_wcs=1e-6, rtol_axes=1e-6)
 
     def __ne__(self, other):
         return not self.__eq__(other)

@@ -4,9 +4,10 @@ import numpy as np
 from numpy.testing import assert_allclose
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from regions import CircleSkyRegion, RectangleSkyRegion, CompoundSkyRegion
+from regions import CircleSkyRegion, CompoundSkyRegion, RectangleSkyRegion
+import matplotlib.pyplot as plt
 from gammapy.maps import MapAxis, RegionGeom, WcsGeom
-from gammapy.utils.testing import mpl_plot_check, requires_dependency
+from gammapy.utils.testing import mpl_plot_check
 
 
 @pytest.fixture()
@@ -373,10 +374,7 @@ def test_get_wcs_coord_and_weights(region):
     assert region_coord.shape == weights.shape
 
 
-@requires_dependency("matplotlib")
 def test_region_nd_map_plot(region):
-    import matplotlib.pyplot as plt
-
     geom = RegionGeom(region)
 
     ax = plt.subplot(projection=geom.wcs)
@@ -392,3 +390,12 @@ def test_region_geom_to_from_hdu(region):
 
     assert new_geom == geom
     assert new_geom.region.meta["include"]
+
+
+def test_contains_point_sky_region():
+    axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=3)
+
+    geom = RegionGeom.create(
+        region="galactic;point(0, 0)", axes=[axis], binsz_wcs=0.01 * u.deg
+    )
+    assert all(geom.contains(geom.center_skydir))

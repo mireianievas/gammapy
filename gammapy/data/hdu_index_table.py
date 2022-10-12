@@ -58,7 +58,7 @@ class HDUIndexTable(Table):
         """Base directory."""
         return make_path(self.meta.get("BASE_DIR", ""))
 
-    def hdu_location(self, obs_id, hdu_type=None, hdu_class=None):
+    def hdu_location(self, obs_id, hdu_type=None, hdu_class=None, warn_missing=True):
         """Create `HDULocation` for a given selection.
 
         Parameters
@@ -82,14 +82,17 @@ class HDUIndexTable(Table):
         if len(idx) == 1:
             idx = idx[0]
         elif len(idx) == 0:
-            log.warning(
-                f"No HDU found matching: OBS_ID = {obs_id}, HDU_TYPE = {hdu_type}, HDU_CLASS = {hdu_class}"
-            )
+            if warn_missing:
+                log.warning(
+                    f"No HDU found matching: OBS_ID = {obs_id}, HDU_TYPE = {hdu_type},"
+                    " HDU_CLASS = {hdu_class}"
+                )
             return None
         else:
             idx = idx[0]
             log.warning(
-                f"Found multiple HDU matching: OBS_ID = {obs_id}, HDU_TYPE = {hdu_type}, HDU_CLASS = {hdu_class}."
+                f"Found multiple HDU matching: OBS_ID = {obs_id}, HDU_TYPE = {hdu_type},"
+                " HDU_CLASS = {hdu_class}."
                 f" Returning the first entry, which has "
                 f"HDU_TYPE = {self[idx]['HDU_TYPE']} and HDU_CLASS = {self[idx]['HDU_CLASS']}"
             )

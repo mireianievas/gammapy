@@ -8,8 +8,6 @@ from gammapy.modeling import Fit, Parameter
 from gammapy.modeling.models import ModelBase, Models
 from gammapy.utils.testing import requires_dependency
 
-pytest.importorskip("iminuit")
-
 
 class MyModel(ModelBase):
     x = Parameter("x", 2)
@@ -53,7 +51,6 @@ class MyDataset(Dataset):
         """Statistic array, one value per data point."""
 
 
-@requires_dependency("iminuit")
 @requires_dependency("sherpa")
 @pytest.mark.parametrize("backend", ["sherpa", "scipy"])
 def test_optimize_backend_and_covariance(backend):
@@ -86,7 +83,6 @@ def test_optimize_backend_and_covariance(backend):
     assert_allclose(correlation[1, 2], 0, atol=1e-7)
 
 
-
 @pytest.mark.parametrize("backend", ["minuit"])
 def test_run(backend):
     dataset = MyDataset()
@@ -97,7 +93,7 @@ def test_run(backend):
     assert result.success
     assert result.optimize_result.method == "migrad"
     assert result.covariance_result.method == "hesse"
-    assert result.covariance_result.success == True
+    assert result.covariance_result.success
 
     assert_allclose(pars["x"].value, 2, rtol=1e-3)
     assert_allclose(pars["y"].value, 3e2, rtol=1e-3)
@@ -111,6 +107,26 @@ def test_run(backend):
     assert_allclose(correlation[0, 1], 0, atol=1e-7)
     assert_allclose(correlation[0, 2], 0, atol=1e-7)
     assert_allclose(correlation[1, 2], 0, atol=1e-7)
+
+    # Verify that the fit result models are independent of the dataset ones
+    pars["x"].value = 3
+    assert_allclose(result.parameters["x"].value, 2, rtol=1e-3)
+
+    # check parameters from the result object
+    pars = result.parameters
+    assert_allclose(pars["x"].error, 1, rtol=1e-7)
+    assert_allclose(pars["y"].error, 1, rtol=1e-7)
+    assert_allclose(pars["z"].error, 1, rtol=1e-7)
+
+
+def test_run_no_free_parameters():
+    dataset = MyDataset()
+    for par in dataset.models.parameters.free_parameters:
+        par.frozen = True
+    fit = Fit()
+    with pytest.raises(ValueError, match="No free parameters for fitting"):
+        fit.run(dataset)
+
 
 @pytest.mark.parametrize("backend", ["minuit"])
 def test_run_linked(backend):
@@ -128,13 +144,16 @@ def test_run_linked(backend):
     fit = Fit(backend=backend)
     fit.run([dataset])
 
-    assert len(dataset.models.parameters.unique_parameters) == 3 
-    assert dataset.models.covariance.shape == (6,6) 
-    expected = [[1.00000000e+00, 1.69728073e-30, 4.76456033e-16],
-                [1.69728073e-30, 1.00000000e+00, 3.56230294e-15],
-                [4.76456033e-16, 3.56230294e-15, 1.00000000e+00]]
+    assert len(dataset.models.parameters.unique_parameters) == 3
+    assert dataset.models.covariance.shape == (6, 6)
+    expected = [
+        [1.00000000e00, 1.69728073e-30, 4.76456033e-16],
+        [1.69728073e-30, 1.00000000e00, 3.56230294e-15],
+        [4.76456033e-16, 3.56230294e-15, 1.00000000e00],
+    ]
     assert_allclose(dataset.models[0].covariance.data, expected)
     assert_allclose(dataset.models[1].covariance.data, expected)
+
 
 @requires_dependency("sherpa")
 @pytest.mark.parametrize("backend", ["minuit", "sherpa", "scipy"])
@@ -289,13 +308,14 @@ def test_stat_contour():
     assert result["success"]
 
     x = result["y"]
-    assert_allclose(len(x), 10)
+    assert len(x) in [10, 11]  # Behavior changed after iminuit>=2.13
     assert_allclose(x[0], 299, rtol=1e-5)
-    assert_allclose(x[-1], 299.133975, rtol=1e-5)
+    assert_allclose(x[9], 299.133975, rtol=1e-5)
     y = result["z"]
-    assert_allclose(len(y), 10)
+    assert len(x) == len(y)
+    assert len(y) in [10, 11]
     assert_allclose(y[0], 0.04, rtol=1e-5)
-    assert_allclose(y[-1], 0.54, rtol=1e-5)
+    assert_allclose(y[9], 0.54, rtol=1e-5)
 
     # Check that original value state wasn't changed
     assert_allclose(dataset.models.parameters["y"].value, 300)

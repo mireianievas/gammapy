@@ -80,7 +80,13 @@ class Fit:
         for a detailed description of the available options. If there is an entry
         'migrad_opts', those options will be passed to `iminuit.Minuit.migrad()`.
 
-        For the `"sherpa"` backend you can from the options `method = {"simplex",  "levmar", "moncar", "gridsearch"}`
+        For the `"sherpa"` backend you can from the options:
+
+            * `"simplex"`
+            * `"levmar"`
+            * `"moncar"`
+            * `"gridsearch"`
+
         Those methods are described and compared in detail on
         http://cxc.cfa.harvard.edu/sherpa/methods/index.html. The available
         options of the optimization methods are described on the following
@@ -159,7 +165,7 @@ class Fit:
 
         if self.backend not in registry.register["covariance"]:
             log.warning("No covariance estimate - not supported by this backend.")
-            return optimize_result
+            return FitResult(optimize_result=optimize_result)
 
         covariance_result = self.covariance(datasets=datasets)
 
@@ -183,6 +189,9 @@ class Fit:
         """
         datasets, parameters = self._parse_datasets(datasets=datasets)
         datasets.parameters.check_limits()
+
+        if len(parameters.free_parameters.names) == 0:
+            raise ValueError("No free parameters for fitting")
 
         parameters.autoscale()
 
@@ -217,8 +226,9 @@ class Fit:
         # Copy final results into the parameters object
         parameters.set_parameter_factors(factors)
         parameters.check_limits()
+
         return OptimizeResult(
-            parameters=parameters,
+            models=datasets.models.copy(),
             total_stat=datasets.stat_sum(),
             backend=backend,
             method=kwargs.get("method", backend),
@@ -269,6 +279,7 @@ class Fit:
             method=method,
             success=info["success"],
             message=info["message"],
+            matrix=datasets.models.covariance.data.copy(),
         )
 
     def confidence(self, datasets, parameter, sigma=1, reoptimize=True):
@@ -387,8 +398,8 @@ class Fit:
         Returns
         -------
         results : dict
-            Dictionary with keys "x_values", "y_values", "stat" and "fit_results". The latter contains an
-            empty list, if `reoptimize` is set to False
+            Dictionary with keys "x_values", "y_values", "stat" and "fit_results".
+            The latter contains an empty list, if `reoptimize` is set to False
         """
         datasets, parameters = self._parse_datasets(datasets=datasets)
 
@@ -525,14 +536,21 @@ class FitStepResult:
 class CovarianceResult(FitStepResult):
     """Covariance result object."""
 
-    pass
+    def __init__(self, matrix=None, **kwargs):
+        self._matrix = matrix
+        super().__init__(**kwargs)
+
+    @property
+    def matrix(self):
+        """Covariance matrix (`~numpy.ndarray`)"""
+        return self._matrix
 
 
 class OptimizeResult(FitStepResult):
     """Optimize result object."""
 
-    def __init__(self, parameters, nfev, total_stat, trace, **kwargs):
-        self._parameters = parameters
+    def __init__(self, models, nfev, total_stat, trace, **kwargs):
+        self._models = models
         self._nfev = nfev
         self._total_stat = total_stat
         self._trace = trace
@@ -541,7 +559,12 @@ class OptimizeResult(FitStepResult):
     @property
     def parameters(self):
         """Best fit parameters"""
-        return self._parameters
+        return self.models.parameters
+
+    @property
+    def models(self):
+        """Best fit models"""
+        return self._models
 
     @property
     def trace(self):
@@ -578,6 +601,10 @@ class FitResult:
 
     def __init__(self, optimize_result=None, covariance_result=None):
         self._optimize_result = optimize_result
+
+        if covariance_result:
+            self.optimize_result.models.covariance = covariance_result.matrix
+
         self._covariance_result = covariance_result
 
     # TODO: is the convenience access needed?
@@ -585,6 +612,12 @@ class FitResult:
     def parameters(self):
         """Best fit parameters of the optimization step"""
         return self.optimize_result.parameters
+
+    # TODO: is the convenience access needed?
+    @property
+    def models(self):
+        """Best fit parameters of the optimization step"""
+        return self.optimize_result.models
 
     # TODO: is the convenience access needed?
     @property
@@ -625,7 +658,11 @@ class FitResult:
     @property
     def success(self):
         """Total success flag"""
-        success = self.optimize_result.success and self.covariance_result.success
+        success = self.optimize_result.success
+
+        if self.covariance_result:
+            success &= self.covariance_result.success
+
         return success
 
     @property

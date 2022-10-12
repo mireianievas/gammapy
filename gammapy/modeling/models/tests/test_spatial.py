@@ -23,7 +23,7 @@ from gammapy.modeling.models import (
     ShellSpatialModel,
     TemplateSpatialModel,
 )
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 def test_sky_point_source():
@@ -58,7 +58,7 @@ def test_sky_gaussian():
     radius = model.evaluation_radius
     assert radius.unit == "deg"
     assert_allclose(radius.value, 5 * sigma.value)
-    assert_allclose(model.evaluation_bin_size_min, (1./3.) * u.deg)
+    assert_allclose(model.evaluation_bin_size_min, (1.0 / 3.0) * u.deg)
 
     # test the normalization for an elongated Gaussian near the Galactic Plane
     m_geom_1 = WcsGeom.create(
@@ -267,13 +267,12 @@ def test_sky_diffuse_constant():
     assert_allclose(val.value, 42)
     radius = model.evaluation_radius
     assert radius is None
-    assert isinstance(model.to_region(), EllipseSkyRegion)
+    assert isinstance(model.to_region(), RectangleSkyRegion)
 
 
-@requires_dependency("matplotlib")
 @requires_data()
 def test_sky_diffuse_map(caplog):
-    filename = "$GAMMAPY_DATA/catalogs/fermi/Extended_archive_v18/Templates/RXJ1713_2016_250GeV.fits"
+    filename = "$GAMMAPY_DATA/catalogs/fermi/Extended_archive_v18/Templates/RXJ1713_2016_250GeV.fits"  # noqa: E501
     model = TemplateSpatialModel.read(filename, normalize=False)
     lon = [258.5, 0] * u.deg
     lat = -39.8 * u.deg
@@ -289,7 +288,7 @@ def test_sky_diffuse_map(caplog):
     assert_allclose(val.value, desired)
 
     res = model.evaluate_geom(model.map.geom)
-    assert_allclose(np.sum(res.value), 32816514.42078349)
+    assert_allclose(np.sum(res.value), 32826159.74707)
     radius = model.evaluation_radius
 
     assert radius.unit == "deg"
@@ -327,7 +326,6 @@ def test_sky_diffuse_map_3d():
         model.plot()
 
 
-@requires_data()
 def test_sky_diffuse_map_normalize():
     # define model map with a constant value of 1
     model_map = Map.create(map_type="wcs", width=(10, 5), binsz=0.5, unit="sr-1")
@@ -343,6 +341,29 @@ def test_sky_diffuse_map_normalize():
     assert vals.unit == ""
     integral = vals.sum()
     assert_allclose(integral.value, 1, rtol=1e-4)
+
+
+def test_sky_diffuse_map_copy():
+    # define model map with a constant value of 1
+    model_map = Map.create(map_type="wcs", width=(1, 1), binsz=0.5, unit="sr-1")
+    model_map.data += 1.0
+
+    model = TemplateSpatialModel(model_map, normalize=False)
+    assert np.all(model.map.data == model_map.data)
+    model.map.data += 1
+    # Check that the original map is unchanged
+    assert np.all(model_map.data == np.ones_like(model_map.data))
+
+    model = TemplateSpatialModel(model_map, normalize=False, copy_data=False)
+    assert np.all(model.map.data == model_map.data)
+    model.map.data += 1
+    # Check that the original map has also been changed
+    assert np.all(model.map.data == model_map.data)
+
+    model_copy = model.copy(copy_data=False)
+    model_copy.map.data += 1
+    # Check that the original map has also been changed
+    assert np.all(model.map.data == model_copy.map.data)
 
 
 def test_evaluate_on_fk5_map():
@@ -375,7 +396,6 @@ def test_evaluate_fk5_model():
     assert data.sum() > 0
 
 
-@requires_dependency("matplotlib")
 def test_spatial_model_plot():
     model = PointSpatialModel()
     model.covariance = np.diag([0.01, 0.01])
@@ -448,3 +468,16 @@ def test_integrate_geom_energy_axis():
     integral = model.integrate_geom(geom).data
 
     assert_allclose(integral, 1, rtol=0.0001)
+
+
+def test_temlatemap_clip():
+    model_map = Map.create(map_type="wcs", width=(2, 2), binsz=0.5, unit="sr-1")
+    model_map.data += 1.0
+    model = TemplateSpatialModel(model_map)
+    model.map.data = model.map.data * -1
+
+    lon = np.array([0, 0.2, 0.3]) * u.deg
+    lat = np.array([0, 0.2, 0.3]) * u.deg
+
+    val = model.evaluate(lon, lat)
+    assert_allclose(val, 0, rtol=0.0001)

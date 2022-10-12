@@ -216,6 +216,14 @@ def get_map_dataset(geom, geom_etrue, edisp="edispmap", name="test", **kwargs):
     )
 
 
+def test_map_dataset_name():
+    with pytest.raises(ValueError, match="of type '<class 'int'>"):
+        _ = MapDataset(name=6353)
+
+    with pytest.raises(ValueError, match="of type '<class 'list'>"):
+        _ = MapDataset(name=[1233, "234"])
+
+
 @requires_data()
 def test_map_dataset_str(sky_model, geom, geom_etrue):
     dataset = get_map_dataset(geom, geom_etrue)
@@ -319,7 +327,7 @@ def test_to_spectrum_dataset(sky_model, geom, geom_etrue, edisp_mode):
         == 3
     )
 
-    assert_allclose(spectrum_dataset.edisp.exposure_map.data[1], 3.069227e+09, rtol=1e-5)
+    assert_allclose(spectrum_dataset.edisp.exposure_map.data[1], 3.069227e09, rtol=1e-5)
     assert np.sum(spectrum_dataset_mask.counts.data) == 0
     assert spectrum_dataset_mask.data_shape == (2, 1, 1)
     assert spectrum_dataset_corrected.exposure.unit == "m2s"
@@ -582,6 +590,8 @@ def test_map_dataset_fits_io(tmp_path, sky_model, geom, geom_etrue):
 
     dataset_new = MapDataset.read(tmp_path / "test.fits")
 
+    assert dataset_new.name == "test"
+
     assert dataset_new.mask.data.dtype == bool
 
     assert_allclose(dataset.counts.data, dataset_new.counts.data)
@@ -619,8 +629,6 @@ def test_map_dataset_fits_io(tmp_path, sky_model, geom, geom_etrue):
     assert_allclose(stacked1.edisp.edisp_map, stacked.edisp.edisp_map)
 
 
-@requires_dependency("iminuit")
-@requires_dependency("matplotlib")
 @requires_data()
 def test_map_fit(sky_model, geom, geom_etrue):
     dataset_1 = get_map_dataset(geom, geom_etrue, name="test-1")
@@ -689,7 +697,7 @@ def test_map_fit(sky_model, geom, geom_etrue):
     dataset_1.npred()
     assert not dataset_1.evaluators["test-model"].contributes
 
-@requires_dependency("iminuit")
+
 @requires_data()
 def test_map_fit_linked(sky_model, geom, geom_etrue):
     dataset_1 = get_map_dataset(geom, geom_etrue, name="test-1")
@@ -724,10 +732,9 @@ def test_map_fit_linked(sky_model, geom, geom_etrue):
     assert sky_model2.parameters["reference"] is sky_model.parameters["reference"]
 
     assert len(datasets.models.parameters.unique_parameters) == 20
-    assert datasets.models.covariance.shape == (22,22)
+    assert datasets.models.covariance.shape == (22, 22)
 
 
-@requires_dependency("iminuit")
 @requires_data()
 def test_map_fit_one_energy_bin(sky_model, geom_image):
     energy_axis = geom_image.axes["energy"]
@@ -852,7 +859,7 @@ def test_stack(sky_model):
         energy_axis=axis, energy_axis_true=axis_etrue, geom=geom
     )
     edisp.exposure_map.quantity = (
-        1e0 * u.m ** 2 * u.s * np.ones(edisp.exposure_map.data.shape)
+        1e0 * u.m**2 * u.s * np.ones(edisp.exposure_map.data.shape)
     )
 
     bkg1 = Map.from_geom(geom)
@@ -862,7 +869,7 @@ def test_stack(sky_model):
     cnt1.data = 1.0 * np.ones(cnt1.data.shape)
 
     exp1 = Map.from_geom(geom_etrue)
-    exp1.quantity = 1e7 * u.m ** 2 * u.s * np.ones(exp1.data.shape)
+    exp1.quantity = 1e7 * u.m**2 * u.s * np.ones(exp1.data.shape)
 
     mask1 = Map.from_geom(geom)
     mask1.data = np.ones(mask1.data.shape, dtype=bool)
@@ -872,6 +879,7 @@ def test_stack(sky_model):
         background=bkg1,
         exposure=exp1,
         mask_safe=mask1,
+        mask_fit=mask1,
         name="dataset-1",
         edisp=edisp,
         meta_table=Table({"OBS_ID": [0]}),
@@ -884,7 +892,7 @@ def test_stack(sky_model):
     cnt2.data = 1.0 * np.ones(cnt2.data.shape)
 
     exp2 = Map.from_geom(geom_etrue)
-    exp2.quantity = 1e7 * u.m ** 2 * u.s * np.ones(exp2.data.shape)
+    exp2.quantity = 1e7 * u.m**2 * u.s * np.ones(exp2.data.shape)
 
     mask2 = Map.from_geom(geom)
     mask2.data = np.ones(mask2.data.shape, dtype=bool)
@@ -896,6 +904,7 @@ def test_stack(sky_model):
         background=bkg2,
         exposure=exp2,
         mask_safe=mask2,
+        mask_fit=mask2,
         name="dataset-2",
         edisp=edisp,
         meta_table=Table({"OBS_ID": [1]}),
@@ -918,6 +927,7 @@ def test_stack(sky_model):
     assert_allclose(stacked.npred_background().data.sum(), 1360.00, 1e-5)
     assert_allclose(stacked.counts.data.sum(), 9000, 1e-5)
     assert_allclose(stacked.mask_safe.data.sum(), 4600)
+    assert_allclose(stacked.mask_fit.data.sum(), 4600)
     assert_allclose(stacked.exposure.data.sum(), 1.6e11)
 
     assert_allclose(stacked.meta_table["OBS_ID"][0], [0, 1])
@@ -1099,14 +1109,16 @@ def get_map_dataset_onoff(images, **kwargs):
         psf=psf,
         edisp=edisp,
         gti=gti,
+        name="MapDatasetOnOff-test",
         **kwargs,
     )
+
 
 @requires_data()
 @pytest.mark.parametrize("lazy", [False, True])
 def test_map_dataset_on_off_fits_io(images, lazy, tmp_path):
     dataset = get_map_dataset_onoff(images)
-    dataset.meta_table = Table(data=[[1.0*u.h], [111]], names=["livetime", "obs_id"])
+    dataset.meta_table = Table(data=[[1.0 * u.h], [111]], names=["livetime", "obs_id"])
     gti = GTI.create([0 * u.s], [1 * u.h], reference_time="2010-01-01T00:00:00")
     dataset.gti = gti
 
@@ -1148,30 +1160,32 @@ def test_map_dataset_on_off_fits_io(images, lazy, tmp_path):
             dataset_new = MapDatasetOnOff.read(tmp_path / "test.fits", lazy=lazy)
     else:
         dataset_new = MapDatasetOnOff.read(tmp_path / "test.fits", lazy=lazy)
+        assert dataset_new.name == "MapDatasetOnOff-test"
         assert dataset_new.mask.data.dtype == bool
-        assert dataset_new.meta_table["livetime"] == 1.0*u.h
+        assert dataset_new.meta_table["livetime"] == 1.0 * u.h
         assert dataset_new.meta_table["obs_id"] == 111
-    
+
         assert_allclose(dataset.counts.data, dataset_new.counts.data)
         assert_allclose(dataset.counts_off.data, dataset_new.counts_off.data)
         assert_allclose(dataset.acceptance.data, dataset_new.acceptance.data)
         assert_allclose(dataset.acceptance_off.data, dataset_new.acceptance_off.data)
         assert_allclose(dataset.exposure.data, dataset_new.exposure.data)
         assert_allclose(dataset.mask_safe, dataset_new.mask_safe)
-    
+
         assert np.all(dataset.mask_safe.data == dataset_new.mask_safe.data)
         assert dataset.mask_safe.geom == dataset_new.mask_safe.geom
         assert dataset.counts.geom == dataset_new.counts.geom
         assert dataset.exposure.geom == dataset_new.exposure.geom
-    
+
         assert_allclose(
             dataset.gti.time_sum.to_value("s"), dataset_new.gti.time_sum.to_value("s")
         )
-    
+
         assert dataset.psf.psf_map == dataset_new.psf.psf_map
         assert dataset.psf.exposure_map == dataset_new.psf.exposure_map
         assert dataset.edisp.edisp_map == dataset_new.edisp.edisp_map
         assert dataset.edisp.exposure_map == dataset_new.edisp.exposure_map
+
 
 @requires_data()
 def test_map_datasets_on_off_fits_io(images, tmp_path):
@@ -1190,6 +1204,7 @@ def test_map_datasets_on_off_fits_io(images, tmp_path):
     assert_allclose(dataset.acceptance_off.data, dataset_new.acceptance_off.data)
     assert_allclose(dataset.exposure.data, dataset_new.exposure.data)
     assert_allclose(dataset.mask_safe, dataset_new.mask_safe)
+
 
 def test_create_onoff(geom):
     # tests empty datasets created
@@ -1519,7 +1534,7 @@ def test_info_dict_on_off(images):
     assert_allclose(info_dict["counts_off"], 20407510.0, rtol=1e-3)
     assert_allclose(info_dict["acceptance"], 4272.7075, rtol=1e-3)
     assert_allclose(info_dict["acceptance_off"], 20175596.0, rtol=1e-3)
-    assert_allclose(info_dict["alpha"], 0.000169, rtol=1e-3)
+    assert_allclose(info_dict["alpha"], 0.00021176, rtol=1e-3)
     assert_allclose(info_dict["ontime"].value, 3600)
 
 
@@ -1568,7 +1583,6 @@ def test_slice_by_idx():
     assert_allclose(axis.edges[0].value, 0.210175, rtol=1e-5)
 
 
-@requires_dependency("matplotlib")
 def test_plot_residual_onoff():
     axis = MapAxis.from_energy_bounds(1, 10, 2, unit="TeV")
     geom = WcsGeom.create(npix=(10, 10), binsz=0.05, axes=[axis])
@@ -1679,13 +1693,14 @@ def test_region_geom_io(tmpdir):
     axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=1)
     geom = RegionGeom.create("icrs;circle(0, 0, 0.2)", axes=[axis])
 
-    dataset = MapDataset.create(geom)
+    dataset = MapDataset.create(geom, name="geom-test")
 
     filename = tmpdir / "test.fits"
     dataset.write(filename)
 
     dataset = MapDataset.read(filename, format="gadf")
 
+    assert dataset.name == "geom-test"
     assert isinstance(dataset.counts.geom, RegionGeom)
     assert isinstance(dataset.edisp.edisp_map.geom, RegionGeom)
     assert isinstance(dataset.psf.psf_map.geom, RegionGeom)
@@ -1725,6 +1740,18 @@ def test_dataset_mixed_geom(tmpdir):
 
     assert isinstance(dataset.psf.psf_map.geom.region, CircleSkyRegion)
     assert isinstance(dataset.edisp.edisp_map.geom.region, CircleSkyRegion)
+
+    geom_psf_reco = RegionGeom.create(
+        "icrs;circle(0, 0, 0.2)", axes=[rad_axis, energy_axis]
+    )
+
+    dataset = MapDataset.from_geoms(
+        geom=geom,
+        geom_exposure=geom_exposure,
+        geom_psf=geom_psf_reco,
+        geom_edisp=geom_edisp,
+    )
+    assert dataset.psf.tag == "psf_map_reco"
 
 
 @requires_data()
@@ -1831,7 +1858,6 @@ def test_map_dataset_hpx_geom_npred(geom_hpx_partial):
     assert_allclose(dataset.npred().data.sum(), 54, rtol=1e-3)
 
 
-@requires_dependency("matplotlib")
 @requires_data()
 def test_peek(images):
     dataset = get_map_dataset_onoff(images)

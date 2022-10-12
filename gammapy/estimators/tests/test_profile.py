@@ -6,11 +6,7 @@ from astropy.coordinates import Angle, SkyCoord
 from astropy.table import Table
 from gammapy.estimators import ImageProfile, ImageProfileEstimator
 from gammapy.maps import WcsGeom, WcsNDMap
-from gammapy.utils.testing import (
-    assert_quantity_allclose,
-    mpl_plot_check,
-    requires_dependency,
-)
+from gammapy.utils.testing import assert_quantity_allclose, mpl_plot_check
 
 
 @pytest.fixture(scope="session")
@@ -130,7 +126,6 @@ class TestImageProfile:
         assert smoothed.profile_err.mean() < cosine_profile.profile_err.mean()
 
     @staticmethod
-    @requires_dependency("matplotlib")
     def test_peek(cosine_profile):
         with mpl_plot_check():
             cosine_profile.peek()

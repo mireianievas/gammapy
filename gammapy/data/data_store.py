@@ -14,11 +14,18 @@ from .observations import Observation, ObservationChecker, Observations
 
 __all__ = ["DataStore"]
 
+ALL_IRFS = ["aeff", "edisp", "psf", "bkg", "rad_max"]
+ALL_HDUS = ["events", "gti"] + ALL_IRFS
 REQUIRED_IRFS = {
-    "full-enclosure": ["aeff", "edisp", "psf", "bkg"],
-    "point-like": ["aeff", "edisp"],
-    "all-optional":  ["aeff", "edisp", "psf", "bkg", "rad_max"],
+    "full-enclosure": {"aeff", "edisp", "psf", "bkg"},
+    "point-like": {"aeff", "edisp"},
+    "all-optional": {},
 }
+
+
+class MissingRequiredHDU(IOError):
+    pass
+
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -29,8 +36,6 @@ class DataStore:
 
     The data selection and access happens using an observation
     and an HDU index file as described at :ref:`gadf:iact-storage`.
-
-    For a usage example see `cta.html <../tutorials/data/cta.html>`__
 
     Parameters
     ----------
@@ -59,6 +64,8 @@ class DataStore:
     Observatory name: 'N/A'
     Number of observations: 105
     <BLANKLINE>
+
+    For further usage example see :doc:`/tutorials/data/cta` tutorial.
     """
 
     DEFAULT_HDU_TABLE = "hdu-index.fits.gz"
@@ -76,7 +83,7 @@ class DataStore:
 
     @property
     def obs_ids(self):
-        """Return list of obs_ids contained in the datastore."""
+        """Return the sorted obs_ids contained in the datastore."""
         return np.unique(self.hdu_table["OBS_ID"].data)
 
     @classmethod
@@ -189,20 +196,20 @@ class DataStore:
         .. _ctobssim: http://cta.irap.omp.eu/ctools/users/reference_manual/ctobssim.html
 
         Parameters
-        -------
+        ----------
         events_paths : list of str or Path
             List of paths to the events files
-            
         irfs_paths : str, Path, or list of str or Path
-            Path to the IRFs file. If a list is provided it must be the same length than `events_paths`.
-            If None the events files have to contain CALDB and IRF header keywords to locate the IRF files,
-            otherwise the IRFs are assumed to be contained in the events files.
-        
+            Path to the IRFs file. If a list is provided it must be the same length
+            than `events_paths`. If None the events files have to contain CALDB and
+            IRF header keywords to locate the IRF files, otherwise the IRFs are
+            assumed to be contained in the events files.
+
         Returns
         -------
         data_store : `DataStore`
             Data store
-            
+
         Examples
         --------
         This is how you can access a single event list::
@@ -260,83 +267,100 @@ class DataStore:
             Observation ID.
         required_irf : list of str or str
             The list can include the following options:
-            * `events` : Events
-            * `gti` :  Good time intervals
-            * `aeff` : Effective area
-            * `bkg` : Background
-            * `edisp`: Energy dispersion
-            * `psf` : Point Spread Function
-            * `rad_max` : Maximal radius
+
+            * `"events"` : Events
+            * `"gti"` :  Good time intervals
+            * `"aeff"` : Effective area
+            * `"bkg"` : Background
+            * `"edisp"`: Energy dispersion
+            * `"psf"` : Point Spread Function
+            * `"rad_max"` : Maximal radius
+
             Alternatively single string can be used as shortcut:
-            * `full-enclosure` : ["events", "gti", "aeff", "edisp", "psf", "bkg"]
-            * `point-like` : ["events", "gti", "aeff", "edisp"]
+
+            * `"full-enclosure"` : includes `["events", "gti", "aeff", "edisp", "psf", "bkg"]`
+            * `"point-like"` : includes `["events", "gti", "aeff", "edisp"]`
 
         Returns
         -------
         observation : `~gammapy.data.Observation`
             Observation container
-            
+
         """
         if obs_id not in self.hdu_table["OBS_ID"]:
             raise ValueError(f"OBS_ID = {obs_id} not in HDU index table.")
 
         kwargs = {"obs_id": int(obs_id)}
 
-        if required_irf == "full-enclosure":
-            hdus = ["events", "gti", "aeff", "edisp", "psf", "bkg"]
-        elif required_irf == "point-like":
-            hdus = ["events", "gti", "aeff", "edisp"]
-        else:
-            hdus = ["events", "gti"] + required_irf
-        for hdu in hdus:
-            kwargs[hdu] = self.hdu_table.hdu_location(obs_id=obs_id, hdu_type=hdu)
+        # check for the "short forms"
+        if isinstance(required_irf, str):
+            required_irf = REQUIRED_IRFS[required_irf]
+
+        if not set(required_irf).issubset(ALL_IRFS):
+            difference = set(required_irf).difference(ALL_IRFS)
+            raise ValueError(
+                f"{difference} is not a valid hdu key. Choose from: {ALL_IRFS}"
+            )
+
+        required_hdus = {"event", "gti"}.union(required_irf)
+
+        missing_hdus = []
+        for hdu in ALL_HDUS:
+            hdu_location = self.hdu_table.hdu_location(
+                obs_id=obs_id,
+                hdu_type=hdu,
+                warn_missing=False,
+            )
+            if hdu_location is not None:
+                kwargs[hdu] = hdu_location
+            elif hdu in required_hdus:
+                missing_hdus.append(hdu)
+
+        if len(missing_hdus) > 0:
+            raise MissingRequiredHDU(
+                f"Required HDUs {missing_hdus} not found in observation {obs_id}"
+            )
 
         return Observation(**kwargs)
 
-
-    def get_observations(self, obs_id=None, skip_missing=False, required_irf="full-enclosure"):
+    def get_observations(
+        self, obs_id=None, skip_missing=False, required_irf="full-enclosure"
+    ):
         """Generate a `~gammapy.data.Observations`.
 
         Parameters
         ----------
         obs_id : list
             Observation IDs (default of ``None`` means "all")
+            If not given, all observations ordered by OBS_ID are returned.
+            This is not necessarily the order in the ``obs_table``.
         skip_missing : bool, optional
             Skip missing observations, default: False
         required_irf : list of str or str
             Runs will be added to the list of observations only if the
             required HDUs are present. Otherwise, the given run will be skipped
             The list can include the following options:
-            * `events` : Events
-            * `gti` :  Good time intervals
-            * `aeff` : Effective area
-            * `bkg` : Background
-            * `edisp`: Energy dispersion
-            * `psf` : Point Spread Function
-            * `rad_max` : Maximal radius
+
+            * `"events"` : Events
+            * `"gti"` :  Good time intervals
+            * `"aeff"` : Effective area
+            * `"bkg"` : Background
+            * `"edisp"`: Energy dispersion
+            * `"psf"` : Point Spread Function
+            * `"rad_max"` : Maximal radius
+
             Alternatively single string can be used as shortcut:
-            * `full-enclosure` : ["events", "gti", "aeff", "edisp", "psf", "bkg"]
-            * `point-like` : ["events", "gti", "aeff", "edisp"]
-            * `all-optional` : no HDUs are required, only warnings will be emitted
-                               for missing HDUs among all possibilities.
+
+            * `"full-enclosure"` : includes `["events", "gti", "aeff", "edisp", "psf", "bkg"]`
+            * `"point-like"` : includes `["events", "gti", "aeff", "edisp"]`
+            * `"all-optional"` : no HDUs are required, only warnings will be emitted
+              for missing HDUs among all possibilities.
 
         Returns
         -------
         observations : `~gammapy.data.Observations`
             Container holding a list of `~gammapy.data.Observation`
         """
-
-        all_hdu = REQUIRED_IRFS["all-optional"]
-        is_all_optional = required_irf == "all-optional"
-
-        if isinstance(required_irf, str) and required_irf in REQUIRED_IRFS.keys():
-            required_irf = REQUIRED_IRFS[required_irf]
-
-        if not set(required_irf).issubset(all_hdu):
-            difference = set(required_irf).difference(all_hdu)
-            raise ValueError(
-                f"{difference} is not a valid hdu key. Choose from: {all_hdu}"
-            )
 
         if obs_id is None:
             obs_id = self.obs_ids
@@ -352,11 +376,12 @@ class DataStore:
                     continue
                 else:
                     raise err
+            except MissingRequiredHDU as e:
+                log.warning(f"Skipping run with missing HDUs; {e}")
+                continue
 
-            if is_all_optional or set(required_irf).issubset(obs.available_hdus):
-                obs_list.append(obs)
-            else:
-                log.warning(f"Skipping run with missing HDUs; obs_id: {_!r}")
+            obs_list.append(obs)
+
         log.info(f"Observations selected: {len(obs_list)} out of {len(obs_id)}.")
         return Observations(obs_list)
 
@@ -518,7 +543,9 @@ class DataStoreMaker:
 
     def get_events_info(self, events_path, irf_path=None):
         if events_path not in self._events_info:
-            self._events_info[events_path] = self.read_events_info(events_path, irf_path)
+            self._events_info[events_path] = self.read_events_info(
+                events_path, irf_path
+            )
 
         return self._events_info[events_path]
 
@@ -566,7 +593,6 @@ class DataStoreMaker:
         info["TIME-END"] = header.get("TIME_END", na_str)
         info["N_TELS"] = header.get("N_TELS", na_int)
         info["OBJECT"] = header.get("OBJECT", na_str)
-
 
         # Not part of the spec, but good to know from which file the info comes
         info["EVENTS_FILENAME"] = str(events_path)

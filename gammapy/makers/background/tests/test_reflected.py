@@ -9,6 +9,7 @@ from regions import (
     CircleSkyRegion,
     EllipseAnnulusSkyRegion,
     EllipseSkyRegion,
+    PointSkyRegion,
     RectangleSkyRegion,
 )
 from gammapy.data import DataStore
@@ -16,17 +17,13 @@ from gammapy.datasets import SpectrumDataset
 from gammapy.makers import (
     ReflectedRegionsBackgroundMaker,
     ReflectedRegionsFinder,
-    WobbleRegionsFinder,
-    SpectrumDatasetMaker,
     SafeMaskMaker,
+    SpectrumDatasetMaker,
+    WobbleRegionsFinder,
 )
 from gammapy.maps import MapAxis, RegionGeom, WcsGeom
 from gammapy.utils.regions import compound_region_to_regions
-from gammapy.utils.testing import (
-    assert_quantity_allclose,
-    requires_data,
-    requires_dependency,
-)
+from gammapy.utils.testing import assert_quantity_allclose, requires_data
 
 
 @pytest.fixture(scope="session")
@@ -53,6 +50,14 @@ def observations():
     datastore = DataStore.from_dir("$GAMMAPY_DATA/hess-dl3-dr1")
     obs_ids = [23523, 23526]
     return datastore.get_observations(obs_ids)
+
+
+@pytest.fixture(scope="session")
+def observations_fixed_rad_max():
+    """Example observation list for testing."""
+    datastore = DataStore.from_dir("$GAMMAPY_DATA/joint-crab/dl3/magic/")
+    obs_ids = [5029748]
+    return datastore.get_observations(obs_ids, required_irf="point-like")
 
 
 @pytest.fixture()
@@ -149,7 +154,6 @@ def test_non_circular_regions(region, nreg):
     assert len(regions) == nreg
 
 
-@requires_dependency("matplotlib")
 def test_bad_on_region(exclusion_mask, on_region):
     pointing = SkyCoord(83.63, 22.01, unit="deg", frame="icrs")
     finder = ReflectedRegionsFinder(
@@ -219,7 +223,7 @@ def test_reflected_bkg_maker_no_off(reflected_bkg_maker, observations, caplog):
 
     message1 = (
         f"ReflectedRegionsBackgroundMaker failed. "
-        f"No OFF region found outside exclusion mask for {datasets[0].name}."
+        f"No OFF region found outside exclusion mask for dataset '{datasets[0].name}'."
     )
     message2 = (
         f"ReflectedRegionsBackgroundMaker failed. "
@@ -302,7 +306,7 @@ def test_wobble_regions_finder():
 
 
 def test_wobble_regions_finder_overlapping(caplog):
-    '''Test that overlapping regions are not produced'''
+    """Test that overlapping regions are not produced"""
     center = SkyCoord(83.6333313, 21.51444435, unit="deg", frame="icrs")
     source_angle = 35 * u.deg
 
@@ -359,3 +363,96 @@ def test_reflected_bkg_maker_with_wobble_finder(
     regions_1 = compound_region_to_regions(datasets[1].counts_off.geom.region)
     assert_allclose(len(regions_0), 3)
     assert_allclose(len(regions_1), 3)
+
+
+@requires_data()
+def test_reflected_bkg_maker_fixed_rad_max(
+    reflected_bkg_maker, observations_fixed_rad_max
+):
+    e_reco = MapAxis.from_energy_bounds(0.1, 10, 5, unit="TeV")
+    e_true = MapAxis.from_energy_bounds(0.1, 10, 5, unit="TeV", name="energy_true")
+
+    pos = SkyCoord(83.63, 22.01, unit="deg", frame="icrs")
+    radius = Angle(0.1414, "deg")
+    region = CircleSkyRegion(pos, radius)
+
+    geom = RegionGeom(region=region, axes=[e_reco])
+    dataset_empty = SpectrumDataset.create(geom=geom, energy_axis_true=e_true)
+
+    maker = SpectrumDatasetMaker(selection=["counts"])
+
+    obs = observations_fixed_rad_max[0]
+    dataset = maker.run(dataset_empty, obs)
+    dataset_on_off = reflected_bkg_maker.run(dataset, obs)
+
+    assert_allclose(dataset_on_off.counts_off.data.sum(), 217)
+
+    regions_0 = compound_region_to_regions(dataset_on_off.counts_off.geom.region)
+    assert_allclose(len(regions_0), 6)
+
+
+@requires_data()
+def test_reflected_bkg_maker_fixed_rad_max_wobble(
+    exclusion_mask, observations_fixed_rad_max
+):
+    reflected_bkg_maker = ReflectedRegionsBackgroundMaker(
+        region_finder=WobbleRegionsFinder(n_off_regions=3),
+        exclusion_mask=exclusion_mask,
+    )
+    e_reco = MapAxis.from_energy_bounds(0.1, 10, 5, unit="TeV")
+    e_true = MapAxis.from_energy_bounds(0.1, 10, 5, unit="TeV", name="energy_true")
+
+    pos = SkyCoord(83.63, 22.01, unit="deg", frame="icrs")
+    radius = Angle(0.1414, "deg")
+    region = CircleSkyRegion(pos, radius)
+
+    geom = RegionGeom(region=region, axes=[e_reco])
+    dataset_empty = SpectrumDataset.create(geom=geom, energy_axis_true=e_true)
+
+    maker = SpectrumDatasetMaker(selection=["counts"])
+
+    obs = observations_fixed_rad_max[0]
+    dataset = maker.run(dataset_empty, obs)
+    dataset_on_off = reflected_bkg_maker.run(dataset, obs)
+
+    assert_allclose(dataset_on_off.counts_off.data.sum(), 102)
+
+    regions_0 = compound_region_to_regions(dataset_on_off.counts_off.geom.region)
+    assert_allclose(len(regions_0), 3)
+
+
+@requires_data()
+def test_reflected_bkg_maker_fixed_rad_max_bad(
+    reflected_bkg_maker, observations_fixed_rad_max
+):
+    e_reco = MapAxis.from_energy_bounds(0.1, 10, 5, unit="TeV")
+
+    pos = SkyCoord(83.63, 22.01, unit="deg", frame="icrs")
+    bad_radius = Angle(0.11, "deg")
+    region_bad_size = CircleSkyRegion(pos, bad_radius)
+
+    maker = SpectrumDatasetMaker(selection=["counts"])
+    obs = observations_fixed_rad_max[0]
+
+    geom_bad_size = RegionGeom(region=region_bad_size, axes=[e_reco])
+    dataset_empty = SpectrumDataset.create(geom=geom_bad_size)
+
+    dataset = maker.run(dataset_empty, obs)
+    with pytest.raises(ValueError):
+        reflected_bkg_maker.run(dataset, obs)
+
+    region_bad_shape = RectangleSkyRegion(pos, 0.2 * u.deg, 0.2 * u.deg)
+    geom_bad_shape = RegionGeom(region_bad_shape, axes=[e_reco])
+    dataset_empty = SpectrumDataset.create(geom=geom_bad_shape)
+
+    dataset = maker.run(dataset_empty, obs)
+    with pytest.raises(ValueError):
+        reflected_bkg_maker.run(dataset, obs)
+
+    region_point_shape = PointSkyRegion(pos)
+    geom_point_shape = RegionGeom(region_point_shape, axes=[e_reco])
+    dataset_empty = SpectrumDataset.create(geom=geom_point_shape)
+
+    dataset = maker.run(dataset_empty, obs)
+    with pytest.raises(ValueError):
+        reflected_bkg_maker.run(dataset, obs)

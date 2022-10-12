@@ -4,15 +4,16 @@ import numpy as np
 from numpy.testing import assert_allclose
 import astropy.units as u
 from astropy.table import Table
+import matplotlib.pyplot as plt
 from gammapy.catalog.fermi import SourceCatalog3FGL, SourceCatalog4FGL
 from gammapy.estimators import FluxPoints
-from gammapy.modeling.models import SpectralModel, PowerLawSpectralModel
+from gammapy.estimators.map.core import DEFAULT_UNIT
+from gammapy.modeling.models import PowerLawSpectralModel, SpectralModel
 from gammapy.utils.scripts import make_path
 from gammapy.utils.testing import (
     assert_quantity_allclose,
     mpl_plot_check,
     requires_data,
-    requires_dependency,
 )
 
 FLUX_POINTS_FILES = [
@@ -38,10 +39,10 @@ class LWTestModel(SpectralModel):
 class XSqrTestModel(SpectralModel):
     @staticmethod
     def evaluate(x):
-        return x ** 2
+        return x**2
 
     def integral(self, xmin, xmax, **kwargs):
-        return 1.0 / 3 * (xmax ** 3 - xmin ** 2)
+        return 1.0 / 3 * (xmax**3 - xmin**2)
 
     def inverse(self, y):
         return np.sqrt(y)
@@ -216,21 +217,28 @@ class TestFluxPoints:
         assert_allclose(flux_points_likelihood.n_sigma_ul, 2)
         assert flux_points_likelihood.sed_type_init == "likelihood"
 
-    @requires_dependency("matplotlib")
     def test_plot(self, flux_points):
-        with mpl_plot_check():
-            flux_points.plot()
 
-    @requires_dependency("matplotlib")
+        fig = plt.figure()
+        ax = fig.add_axes([0.2, 0.2, 0.7, 0.7])
+        ax.xaxis.set_units(u.eV)
+
+        yunit = DEFAULT_UNIT[flux_points.sed_type_init]
+        ax.yaxis.set_units(yunit)
+
+        with mpl_plot_check():
+            flux_points.plot(ax=ax)
+
     def test_plot_likelihood(self, flux_points_likelihood):
         with mpl_plot_check():
             flux_points_likelihood.plot_ts_profiles()
 
-    @requires_dependency("matplotlib")
     def test_plot_likelihood_error(self, flux_points_likelihood):
         del flux_points_likelihood._data["stat_scan"]
+
         with pytest.raises(AttributeError):
-            flux_points_likelihood.plot_ts_profiles()
+            ax = plt.subplot()
+            flux_points_likelihood.plot_ts_profiles(ax=ax)
 
 
 @requires_data()
@@ -274,7 +282,6 @@ def test_compute_flux_points_dnde_fermi():
 
 
 @requires_data()
-@requires_dependency("matplotlib")
 def test_plot_fp_no_ul():
     path = make_path("$GAMMAPY_DATA/tests/spectrum/flux_points/diff_flux_points.fits")
     table = Table.read(path)
@@ -315,7 +322,6 @@ def test_is_ul(tmp_path):
     assert_allclose(table["is_ul"].data.data, is_ul)
 
 
-@requires_dependency("matplotlib")
 def test_flux_points_plot_no_error_bar():
     table = Table()
     pwl = PowerLawSpectralModel()
@@ -327,4 +333,4 @@ def test_flux_points_plot_no_error_bar():
 
     flux_points = FluxPoints.from_table(table)
     with mpl_plot_check():
-       _ = flux_points.plot(sed_type="dnde")
+        _ = flux_points.plot(sed_type="dnde")

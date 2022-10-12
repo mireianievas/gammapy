@@ -9,6 +9,37 @@ __all__ = ["WStatCountsStatistic", "CashCountsStatistic"]
 
 
 class CountsStatistic(abc.ABC):
+    """Counts statistics base class"""
+
+    @property
+    @abc.abstractmethod
+    def stat_null(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def stat_max(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def n_sig(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def n_bkg(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def error(self):
+        pass
+
+    @abc.abstractmethod
+    def _stat_fcn(self):
+        pass
+
     @property
     def ts(self):
         """Return stat difference (TS) of measured excess versus no excess."""
@@ -40,8 +71,7 @@ class CountsStatistic(abc.ABC):
         n_sigma : float
             Confidence level of the uncertainty expressed in number of sigma. Default is 1.
         """
-
-        errn = np.zeros_like(self.n_on, dtype="float")
+        errn = np.zeros_like(self.n_sig, dtype="float")
         min_range = self.n_sig - 2 * n_sigma * (self.error + 1)
 
         it = np.nditer(errn, flags=["multi_index"])
@@ -51,12 +81,12 @@ class CountsStatistic(abc.ABC):
                 min_range[it.multi_index],
                 self.n_sig[it.multi_index],
                 nbin=1,
-                args=(self.stat_max[it.multi_index] + n_sigma ** 2, it.multi_index),
+                args=(self.stat_max[it.multi_index] + n_sigma**2, it.multi_index),
             )
             if np.isnan(roots[0]):
-                errn[it.multi_index] = -self.n_on[it.multi_index]
+                errn[it.multi_index] = self.n_on[it.multi_index]
             else:
-                errn[it.multi_index] = roots[0] - self.n_sig[it.multi_index]
+                errn[it.multi_index] = self.n_sig[it.multi_index] - roots[0]
             it.iternext()
 
         return errn
@@ -82,7 +112,7 @@ class CountsStatistic(abc.ABC):
                 self.n_sig[it.multi_index],
                 max_range[it.multi_index],
                 nbin=1,
-                args=(self.stat_max[it.multi_index] + n_sigma ** 2, it.multi_index),
+                args=(self.stat_max[it.multi_index] + n_sigma**2, it.multi_index),
             )
             errp[it.multi_index] = roots[0]
             it.iternext()
@@ -115,11 +145,15 @@ class CountsStatistic(abc.ABC):
                 min_range[it.multi_index],
                 max_range[it.multi_index],
                 nbin=1,
-                args=(ts_ref + n_sigma ** 2, it.multi_index),
+                args=(ts_ref + n_sigma**2, it.multi_index),
             )
             ul[it.multi_index] = roots[0]
             it.iternext()
         return ul
+
+    @abc.abstractmethod
+    def _n_sig_matching_significance_fcn(self):
+        pass
 
     def n_sig_matching_significance(self, significance):
         """Compute excess matching a given significance.
@@ -158,10 +192,26 @@ class CountsStatistic(abc.ABC):
             it.iternext()
         return n_sig
 
+    @abc.abstractmethod
+    def sum(self, axis=None):
+        """Return summed CountsStatistics.
+
+        Parameters
+        ----------
+        axis : None or int or tuple of ints, optional
+             Axis or axes on which to perform the summation.
+             Default, axis=None, will perform the sum over the whole array.
+
+        Returns
+        -------
+        stat : `~gammapy.stats.CountsStatistics`
+             the return stat object
+        """
+        pass
+
 
 class CashCountsStatistic(CountsStatistic):
-    """Class to compute statistics (significance, asymmetric errors , ul) for Poisson distributed variable
-    with known background.
+    """Class to compute statistics for Poisson distributed variable with known background.
 
     Parameters
     ----------
@@ -208,10 +258,17 @@ class CashCountsStatistic(CountsStatistic):
         TS1 = cash(n_sig + self.mu_bkg[index], self.mu_bkg[index] + n_sig)
         return np.sign(n_sig) * np.sqrt(np.clip(TS0 - TS1, 0, None)) - significance
 
+    def sum(self, axis=None):
+        n_on = self.n_on.sum(axis=axis)
+        bkg = self.n_bkg.sum(axis=axis)
+        return CashCountsStatistic(n_on=n_on, mu_bkg=bkg)
+
+    def __getitem__(self, key):
+        return CashCountsStatistic(n_on=self.n_on[key], mu_bkg=self.n_bkg[key])
+
 
 class WStatCountsStatistic(CountsStatistic):
-    """Class to compute statistics (significance, asymmetric errors , ul) for Poisson distributed variable
-    with unknown background.
+    """Class to compute statistics for Poisson distributed variable with unknown background.
 
     Parameters
     ----------
@@ -229,6 +286,7 @@ class WStatCountsStatistic(CountsStatistic):
         self.n_on = np.asanyarray(n_on)
         self.n_off = np.asanyarray(n_off)
         self.alpha = np.asanyarray(alpha)
+
         if mu_sig is None:
             self.mu_sig = np.zeros_like(self.n_on)
         else:
@@ -247,7 +305,7 @@ class WStatCountsStatistic(CountsStatistic):
     @property
     def error(self):
         """Approximate error from the covariance matrix."""
-        return np.sqrt(self.n_on + self.alpha ** 2 * self.n_off)
+        return np.sqrt(self.n_on + self.alpha**2 * self.n_off)
 
     @property
     def stat_null(self):
@@ -256,7 +314,10 @@ class WStatCountsStatistic(CountsStatistic):
 
     @property
     def stat_max(self):
-        """Stat value for best fit hypothesis, i.e. expected signal mu = n_on - alpha * n_off - mu_sig"""
+        """Stat value for best fit hypothesis
+
+        i.e. expected signal mu = n_on - alpha * n_off - mu_sig
+        """
         return wstat(self.n_on, self.n_off, self.alpha, self.n_sig + self.mu_sig)
 
     def _stat_fcn(self, mu, delta=0, index=None):
@@ -281,3 +342,14 @@ class WStatCountsStatistic(CountsStatistic):
             n_sig,
         )
         return np.sign(n_sig) * np.sqrt(np.clip(stat0 - stat1, 0, None)) - significance
+
+    def sum(self, axis=None):
+        n_on = self.n_on.sum(axis=axis)
+        n_off = self.n_off.sum(axis=axis)
+        alpha = self.n_bkg.sum(axis=axis) / n_off
+        return WStatCountsStatistic(n_on=n_on, n_off=n_off, alpha=alpha)
+
+    def __getitem__(self, key):
+        return WStatCountsStatistic(
+            n_on=self.n_on[key], n_off=self.n_off[key], alpha=self.alpha[key]
+        )

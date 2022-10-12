@@ -1,6 +1,5 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
-from collections import OrderedDict
 import numpy as np
 import scipy.interpolate
 import scipy.ndimage as ndi
@@ -17,10 +16,9 @@ from regions import (
     RectangleSkyRegion,
     SkyRegion,
 )
+import matplotlib.pyplot as plt
 from gammapy.utils.interpolation import ScaledRegularGridInterpolator
-from gammapy.utils.random import InverseCDFSampler, get_random_state
 from gammapy.utils.units import unit_from_fits_image_hdu
-from ..coord import MapCoord
 from ..geom import pix_tuple_to_idx
 from ..utils import INVALID_INDEX
 from .core import WcsMap
@@ -149,9 +147,20 @@ class WcsNDMap(WcsMap):
             data = self.data.T
 
         fn = ScaledRegularGridInterpolator(
-            grid_pix, data, fill_value=fill_value, bounds_error=False, method=method
+            grid_pix, data, fill_value=None, bounds_error=False, method=method
         )
-        return fn(tuple(pix), clip=False)
+        interp_data = fn(tuple(pix), clip=False)
+
+        if fill_value is not None:
+            idxs = self.geom.pix_to_idx(pix, clip=False)
+            invalid = np.broadcast_arrays(*[idx == -1 for idx in idxs])
+            mask = np.any(invalid, axis=0)
+            if not interp_data.shape:
+                mask = mask.squeeze()
+            interp_data[mask] = fill_value
+            interp_data[~np.isfinite(interp_data)] = fill_value
+
+        return interp_data
 
     def _interp_by_coord_griddata(self, coords, method="linear"):
         grid_coords = self.geom.get_coord()
@@ -173,7 +182,7 @@ class WcsNDMap(WcsMap):
 
         return vals
 
-    def fill_by_idx(self, idx, weights=None):
+    def _resample_by_idx(self, idx, weights=None, preserve_counts=False):
         idx = pix_tuple_to_idx(idx)
         msk = np.all(np.stack([t != INVALID_INDEX.int for t in idx]), axis=0)
         idx = [t[msk] for t in idx]
@@ -186,7 +195,14 @@ class WcsNDMap(WcsMap):
         idx = np.ravel_multi_index(idx, self.data.T.shape)
         idx, idx_inv = np.unique(idx, return_inverse=True)
         weights = np.bincount(idx_inv, weights=weights).astype(self.data.dtype)
+
+        if not preserve_counts:
+            weights /= np.bincount(idx_inv).astype(self.data.dtype)
+
         self.data.T.flat[idx] += weights
+
+    def fill_by_idx(self, idx, weights=None):
+        return self._resample_by_idx(idx, weights=weights, preserve_counts=True)
 
     def set_by_idx(self, idx, vals):
         idx = pix_tuple_to_idx(idx)
@@ -281,7 +297,7 @@ class WcsNDMap(WcsMap):
             ) + idx[2:]
         else:
             pix = list(idx)
-            idx_ax = self.geom.axes.index(axis_name)
+            idx_ax = self.geom.axes_names.index(axis_name)
             pix[idx_ax] = (pix[idx_ax] - 0.5 * (factor - 1)) / factor
 
         if preserve_counts:
@@ -342,7 +358,6 @@ class WcsNDMap(WcsMap):
             WCS axis object
         """
         from astropy.visualization import simple_norm
-        import matplotlib.pyplot as plt
 
         if not self.geom.is_flat:
             raise TypeError("Use .plot_interactive() for Map dimension > 2")
@@ -426,7 +441,6 @@ class WcsNDMap(WcsMap):
 
     def _plot_default_axes(self, ax):
         from astropy.visualization.wcsaxes.frame import EllipticalFrame
-        import matplotlib.pyplot as plt
 
         if ax is None:
             fig = plt.gcf()
@@ -702,7 +716,8 @@ class WcsNDMap(WcsMap):
         if len(shape_axes_kernel) > 0:
             if not geom.shape_axes == shape_axes_kernel:
                 raise ValueError(
-                    f"Incompatible shape between data {geom.shape_axes} and kernel {shape_axes_kernel}"
+                    f"Incompatible shape between data {geom.shape_axes}"
+                    " and kernel {shape_axes_kernel}"
                 )
 
         if self.geom.is_image and kernel.ndim == 3:
@@ -711,7 +726,7 @@ class WcsNDMap(WcsMap):
                     self.data.astype(np.float32), kernel[idx], method=method, mode=mode
                 )
         else:
-            for img, idx in self.iter_by_image():
+            for img, idx in self.iter_by_image_data():
                 ikern = Ellipsis if kernel.ndim == 2 else idx
                 data[idx] = convolve(
                     img.astype(np.float32), kernel[ikern], method=method, mode=mode
@@ -750,7 +765,7 @@ class WcsNDMap(WcsMap):
 
         smoothed_data = np.empty(self.data.shape, dtype=float)
 
-        for img, idx in self.iter_by_image():
+        for img, idx in self.iter_by_image_data():
             img = img.astype(float)
             if kernel == "gauss":
                 data = ndi.gaussian_filter(img, width, **kwargs)
@@ -833,38 +848,12 @@ class WcsNDMap(WcsMap):
 
         data = other.quantity[cutout_slices].to_value(self.unit)
         if nan_to_num:
-            data = data.copy()
-            data[~np.isfinite(data)] = 0
+            not_finite = ~np.isfinite(data)
+            if np.any(not_finite):
+                data = data.copy()
+                data[not_finite] = 0
         if weights is not None:
             if not other.geom.to_image() == weights.geom.to_image():
                 raise ValueError("Incompatible spatial geoms between map and weights")
             data = data * weights.data[cutout_slices]
         self.data[parent_slices] += data
-
-    def sample_coord(self, n_events, random_state=0):
-        """Sample position and energy of events.
-
-        Parameters
-        ----------
-        n_events : int
-            Number of events to sample.
-        random_state : {int, 'random-seed', 'global-rng', `~numpy.random.RandomState`}
-            Defines random number generator initialisation.
-            Passed to `~gammapy.utils.random.get_random_state`.
-
-        Returns
-        -------
-        coords : `~gammapy.maps.MapCoord` object.
-            Sequence of coordinates and energies of the sampled events.
-        """
-
-        random_state = get_random_state(random_state)
-        sampler = InverseCDFSampler(pdf=self.data, random_state=random_state)
-
-        coords_pix = sampler.sample(n_events)
-        coords = self.geom.pix_to_coord(coords_pix[::-1])
-
-        # TODO: pix_to_coord should return a MapCoord object
-        cdict = OrderedDict(zip(self.geom.axes_names, coords))
-
-        return MapCoord.create(cdict, frame=self.geom.frame)

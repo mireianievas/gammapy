@@ -4,6 +4,8 @@ import numpy as np
 from astropy import units as u
 from astropy.table import Table
 from astropy.visualization import quantity_support
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from gammapy.modeling.models import DatasetModels
 from gammapy.utils.scripts import make_name, make_path
 from .core import Dataset
@@ -14,8 +16,8 @@ __all__ = ["FluxPointsDataset"]
 
 
 class FluxPointsDataset(Dataset):
-    """
-    Bundle a set of flux points with a parametric model, to compute fit statistic function using chi2 statistics.
+    """Bundle a set of flux points with a parametric model,
+    to compute fit statistic function using chi2 statistics.
 
     Parameters
     ----------
@@ -45,32 +47,32 @@ class FluxPointsDataset(Dataset):
     >>> dataset.models = model
 
     Make the fit
-    
+
     >>> fit = Fit()
     >>> result = fit.run([dataset])
     >>> print(result)
     OptimizeResult
     <BLANKLINE>
-    	backend    : minuit
-    	method     : migrad
-    	success    : True
-    	message    : Optimization terminated successfully.
-    	nfev       : 135
-    	total stat : 25.21
+        backend    : minuit
+        method     : migrad
+        success    : True
+        message    : Optimization terminated successfully.
+        nfev       : 135
+        total stat : 25.21
     <BLANKLINE>
     CovarianceResult
     <BLANKLINE>
-    	backend    : minuit
-    	method     : hesse
-    	success    : True
-    	message    : Hesse terminated successfully.
+        backend    : minuit
+        method     : hesse
+        success    : True
+        message    : Hesse terminated successfully.
 
     >>> print(result.parameters.to_table())
-          type      name     value         unit        error   min max frozen link
-    -------- --------- ---------- -------------- --------- --- --- ------ ----
-    spectral     index 2.2159e+00                1.043e-02 nan nan  False
-    spectral amplitude 2.1619e-13 cm-2 s-1 TeV-1 1.901e-14 nan nan  False
-    spectral reference 1.0000e+00            TeV 0.000e+00 nan nan   True
+      type      name     value         unit      ... max frozen is_norm link
+    -------- --------- ---------- -------------- ... --- ------ ------- ----
+    spectral     index 2.2159e+00                ... nan  False   False
+    spectral amplitude 2.1619e-13 cm-2 s-1 TeV-1 ... nan  False    True
+    spectral reference 1.0000e+00            TeV ... nan   True   False
 
     Note: In order to reproduce the example you need the tests datasets folder.
     You may download it with the command
@@ -89,6 +91,8 @@ class FluxPointsDataset(Dataset):
         name=None,
         meta_table=None,
     ):
+        if data.geom.ndim != 3 or not data.geom.has_energy_axis:
+            raise ValueError("FluxPointsDataset only supports an energy axis")
         self.data = data
         self.mask_fit = mask_fit
         self._name = make_name(name)
@@ -168,15 +172,18 @@ class FluxPointsDataset(Dataset):
         table = Table.read(filename)
         mask_fit = None
         mask_safe = None
+
         if "mask_safe" in table.colnames:
             mask_safe = table["mask_safe"].data.astype("bool")
+
         if "mask_fit" in table.colnames:
             mask_fit = table["mask_fit"].data.astype("bool")
+
         return cls(
             name=make_name(name),
             data=FluxPoints.from_table(table, format=format),
             mask_fit=mask_fit,
-            mask_safe=mask_safe
+            mask_safe=mask_safe,
         )
 
     @classmethod
@@ -259,7 +266,15 @@ class FluxPointsDataset(Dataset):
         """Compute predicted flux."""
         flux = 0.0
         for model in self.models:
-            flux += model.spectral_model(self.data.energy_ref)
+            flux_model = model.spectral_model(self.data.energy_ref)
+
+            if model.temporal_model is not None:
+                integral = model.temporal_model.integral(
+                    self.gti.time_start, self.gti.time_stop
+                )
+                flux_model *= np.sum(integral)
+
+            flux += flux_model
         return flux
 
     def stat_array(self):
@@ -335,13 +350,10 @@ class FluxPointsDataset(Dataset):
         >>> model = SkyModel(spectral_model=PowerLawSpectralModel())
         >>> dataset = FluxPointsDataset(model, flux_points)
         >>> #configuring optional parameters
-        >>> kwargs_spectrum = {"kwargs_model": {"color":"red", "ls":"--"}, "kwargs_fp":{"color":"green", "marker":"o"}}
+        >>> kwargs_spectrum = {"kwargs_model": {"color":"red", "ls":"--"}, "kwargs_fp":{"color":"green", "marker":"o"}}  # noqa: E501
         >>> kwargs_residuals = {"color": "blue", "markersize":4, "marker":'s', }
-        >>> dataset.plot_fit(kwargs_residuals=kwargs_residuals, kwargs_spectrum=kwargs_spectrum) # doctest: +SKIP
+        >>> dataset.plot_fit(kwargs_residuals=kwargs_residuals, kwargs_spectrum=kwargs_spectrum) # doctest: +SKIP noqa: E501
         """
-        import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpec
-
         fig = plt.figure(figsize=(9, 7))
 
         gs = GridSpec(7, 1)
@@ -388,8 +400,6 @@ class FluxPointsDataset(Dataset):
             Axes object.
 
         """
-        import matplotlib.pyplot as plt
-
         ax = ax or plt.gca()
 
         fp = self.data

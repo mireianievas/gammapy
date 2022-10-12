@@ -9,6 +9,7 @@ from astropy.io import fits
 from astropy.table import Column, Table, hstack
 from astropy.time import Time
 from astropy.utils import lazyproperty
+import matplotlib.pyplot as plt
 from gammapy.utils.interpolation import interpolation_scale
 from gammapy.utils.time import time_ref_from_dict, time_ref_to_dict
 from .utils import INVALID_INDEX, edges_from_lo_hi
@@ -25,6 +26,7 @@ def flat_if_equal(array):
 
 class AxisCoordInterpolator:
     """Axis coord interpolator"""
+
     def __init__(self, edges, interp="lin"):
         self.scale = interpolation_scale(interp)
         self.x = self.scale(edges)
@@ -88,10 +90,10 @@ class MapAxis:
         Axis name
     node_type : str
         Flag indicating whether coordinate nodes correspond to pixel
-        edges (node_type = 'edge') or pixel centers (node_type =
+        edges (node_type = 'edges') or pixel centers (node_type =
         'center').  'center' should be used where the map values are
         defined at a specific coordinate (e.g. differential
-        quantities). 'edge' should be used where map values are
+        quantities). 'edges' should be used where map values are
         defined by an integral over coordinate intervals (e.g. a
         counts histogram).
     unit : str
@@ -100,7 +102,9 @@ class MapAxis:
 
     # TODO: Cache an interpolation object?
     def __init__(self, nodes, interp="lin", name="", node_type="edges", unit=""):
-        self._name = name
+
+        if not isinstance(name, str):
+            raise TypeError(f"Name must be a string, got: {type(name)!r}")
 
         if len(nodes) != len(np.unique(nodes)):
             raise ValueError("MapAxis: node values must be unique")
@@ -114,6 +118,7 @@ class MapAxis:
         else:
             nodes = np.array(nodes)
 
+        self._name = name
         self._unit = u.Unit(unit)
         self._nodes = nodes.astype(float)
         self._node_type = node_type
@@ -135,6 +140,7 @@ class MapAxis:
             raise ValueError(f"Invalid node type: {node_type!r}")
 
         self._nbin = nbin
+        self._use_center_as_plot_labels = None
 
     def assert_name(self, required_name):
         """Assert axis name if a specific one is required.
@@ -174,23 +180,40 @@ class MapAxis:
         aligned = np.allclose(np.round(pix_all) - pix_all, 0, atol=atol)
         return aligned and self.interp == other.interp
 
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
+    def is_allclose(self, other, **kwargs):
+        """Check if other map axis is all close.
 
-        # TODO: implement an allclose method for MapAxis and call it here
+        Parameters
+        ----------
+        other : `MapAxis`
+            Other map axis
+        **kwargs : dict
+            Keyword arguments forwarded to `~numpy.allclose`
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether other axis is allclose
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
         if self.edges.shape != other.edges.shape:
             return False
         if not self.unit.is_equivalent(other.unit):
             return False
         return (
-            np.allclose(
-                self.edges.to(other.unit).value, other.edges.value, atol=1e-6, rtol=1e-6
-            )
+            np.allclose(self.edges, other.edges, **kwargs)
             and self._node_type == other._node_type
             and self._interp == other._interp
             and self.name.upper() == other.name.upper()
         )
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other, rtol=1e-6, atol=1e-6)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -251,16 +274,28 @@ class MapAxis:
         )
 
     @property
+    def use_center_as_plot_labels(self):
+        """Use center as plot labels"""
+        if self._use_center_as_plot_labels is not None:
+            return self._use_center_as_plot_labels
+
+        return self.node_type == "center"
+
+    @use_center_as_plot_labels.setter
+    def use_center_as_plot_labels(self, value):
+        """Use center as plot labels"""
+        self._use_center_as_plot_labels = bool(value)
+
+    @property
     def as_plot_labels(self):
         """Return list of axis plot labels"""
-        if self.node_type == "edges":
+        if self.use_center_as_plot_labels:
+            labels = [f"{val:.2e}" for val in self.center]
+        else:
             labels = [
                 f"{val_min:.2e} - {val_max:.2e}"
                 for val_min, val_max in self.iter_by_edges
             ]
-        else:
-            labels = [f"{val:.2e}" for val in self.center]
-
         return labels
 
     @property
@@ -281,7 +316,7 @@ class MapAxis:
         return mpl_scale[self.interp]
 
     def to_node_type(self, node_type):
-        """Return MapAxis copy chaning its node type to node_type.
+        """Return MapAxis copy changing its node type to node_type.
 
         Parameters
         ----------
@@ -308,6 +343,21 @@ class MapAxis:
                 unit=self.unit,
             )
 
+    def rename(self, new_name):
+        """Rename the axis.
+
+        Parameters
+        ----------
+        new_name : str
+            The new name for the axis.
+
+        Returns
+        -------
+        axis : `~gammapy.maps.MapAxis`
+            Renamed MapAxis
+        """
+        return self.copy(name=new_name)
+
     def format_plot_xaxis(self, ax):
         """Format plot axis
 
@@ -325,7 +375,7 @@ class MapAxis:
 
         xlabel = DEFAULT_LABEL_TEMPLATE.format(
             quantity=PLOT_AXIS_LABEL.get(self.name, self.name.capitalize()),
-            unit=self.unit,
+            unit=ax.xaxis.units,
         )
         ax.set_xlabel(xlabel)
         xmin, xmax = self.bounds
@@ -348,7 +398,10 @@ class MapAxis:
         """
         ax.set_yscale(self.as_plot_scale)
 
-        ylabel = self.name.capitalize() + f" [{ax.yaxis.units}]"
+        ylabel = DEFAULT_LABEL_TEMPLATE.format(
+            quantity=PLOT_AXIS_LABEL.get(self.name, self.name.capitalize()),
+            unit=ax.yaxis.units,
+        )
         ax.set_ylabel(ylabel)
         ax.set_ylim(self.bounds)
         return ax
@@ -391,7 +444,7 @@ class MapAxis:
 
     @property
     def node_type(self):
-        """Return node type ('center' or 'edge')."""
+        """Return node type ('center' or 'edges')."""
         return self._node_type
 
     @property
@@ -403,7 +456,7 @@ class MapAxis:
     def from_bounds(cls, lo_bnd, hi_bnd, nbin, **kwargs):
         """Generate an axis object from a lower/upper bound and number of bins.
 
-        If node_type = 'edge' then bounds correspond to the
+        If node_type = 'edges' then bounds correspond to the
         lower and upper bound of the first and last bin.  If node_type
         = 'center' then bounds correspond to the centers of the first
         and last bin.
@@ -436,7 +489,7 @@ class MapAxis:
         elif interp == "log":
             nodes = np.exp(np.linspace(np.log(lo_bnd), np.log(hi_bnd), nnode))
         elif interp == "sqrt":
-            nodes = np.linspace(lo_bnd ** 0.5, hi_bnd ** 0.5, nnode) ** 2.0
+            nodes = np.linspace(lo_bnd**0.5, hi_bnd**0.5, nnode) ** 2.0
         else:
             raise ValueError(f"Invalid interp: {interp}")
 
@@ -1061,7 +1114,7 @@ class MapAxis:
     def to_table(self, format="ogip"):
         """Convert `~astropy.units.Quantity` to OGIP ``EBOUNDS`` extension.
 
-        See https://heasarc.gsfc.nasa.gov/docs/heasarc/caldb/docs/memos/cal_gen_92_002/cal_gen_92_002.html#tth_sEc3.2
+        See https://heasarc.gsfc.nasa.gov/docs/heasarc/caldb/docs/memos/cal_gen_92_002/cal_gen_92_002.html#tth_sEc3.2  # noqa: E501
 
         The 'ogip-sherpa' format is equivalent to 'ogip' but uses keV energy units.
 
@@ -1135,7 +1188,7 @@ class MapAxis:
     def to_table_hdu(self, format="ogip"):
         """Convert `~astropy.units.Quantity` to OGIP ``EBOUNDS`` extension.
 
-        See https://heasarc.gsfc.nasa.gov/docs/heasarc/caldb/docs/memos/cal_gen_92_002/cal_gen_92_002.html#tth_sEc3.2
+        See https://heasarc.gsfc.nasa.gov/docs/heasarc/caldb/docs/memos/cal_gen_92_002/cal_gen_92_002.html#tth_sEc3.2  # noqa: E501
 
         The 'ogip-sherpa' format is equivalent to 'ogip' but uses keV energy units.
 
@@ -1791,7 +1844,7 @@ class MapAxes(Sequence):
 
         Parameters
         ----------
-        format : {"gadf", "gadf-dl3", "fgst-ccube", "fgst-template", "ogip", "ogip-sherpa", "ogip-arf", "ogip-arf-sherpa"}
+        format : {"gadf", "gadf-dl3", "fgst-ccube", "fgst-template", "ogip", "ogip-sherpa", "ogip-arf", "ogip-arf-sherpa"}  # noqa E501
             Format to use.
 
         Returns
@@ -2009,10 +2062,67 @@ class MapAxes(Sequence):
         except ValueError:
             raise ValueError(message)
 
+    def rename_axes(self, names, new_names):
+        """Rename the axes.
+
+        Parameters
+        ----------
+        names : list or str
+            Names of the axes
+        new_names : list or str
+            New names of the axes (list must be of same length than `names`).
+
+        Returns
+        -------
+        axes : `MapAxes`
+            Renamed Map axes object
+        """
+        axes = self.copy()
+        if isinstance(names, str):
+            names = [names]
+        if isinstance(new_names, str):
+            new_names = [new_names]
+        for name, new_name in zip(names, new_names):
+            axes[name]._name = new_name
+        return axes
+
     @property
     def center_coord(self):
         """Center coordinates"""
         return tuple([ax.pix_to_coord((float(ax.nbin) - 1.0) / 2.0) for ax in self])
+
+    def is_allclose(self, other, **kwargs):
+        """Check if other map axes are all close.
+
+        Parameters
+        ----------
+        other : `MapAxes`
+            Other map axes
+        **kwargs : dict
+            Keyword arguments forwarded to `~MapAxis.is_allclose`
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether other axes are all close
+        """
+        if not isinstance(other, self.__class__):
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
+
+        return np.all([ax0.is_allclose(ax1, **kwargs) for ax0, ax1 in zip(other, self)])
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other, rtol=1e-6, atol=1e-6)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def copy(self):
+        """Init map axes instance by copying each axis."""
+        return self.__class__([_.copy() for _ in self])
 
 
 class TimeMapAxis:
@@ -2153,6 +2263,17 @@ class TimeMapAxis:
         return edges_from_lo_hi(self.edges_min, self.edges_max)
 
     @property
+    def bounds(self):
+        """Bounds of the axis (~astropy.units.Quantity)"""
+        return self.edges_min[0], self.edges_max[-1]
+
+    @property
+    def time_bounds(self):
+        """Bounds of the axis (~astropy.units.Quantity)"""
+        t_min, t_max = self.bounds
+        return t_min + self.reference_time, t_max + self.reference_time
+
+    @property
     def time_min(self):
         """Return axis lower edges as Time objects."""
         return self._edges_min + self.reference_time
@@ -2239,7 +2360,6 @@ class TimeMapAxis:
         ax : `~matplotlib.pyplot.Axis`
             Formatted plot axis
         """
-        import matplotlib.pyplot as plt
         from matplotlib.dates import DateFormatter
 
         xlabel = DEFAULT_LABEL_TEMPLATE.format(
@@ -2273,9 +2393,23 @@ class TimeMapAxis:
                 f' expected "{required_name}", got: "{self.name}"'
             )
 
-    def __eq__(self, other):
+    def is_allclose(self, other, **kwargs):
+        """Check if other map axis is all close.
+
+        Parameters
+        ----------
+        other : `TimeMapAxis`
+            Other map axis
+        **kwargs : dict
+            Keyword arguments forwarded to `~numpy.allclose`
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether other axis is allclose
+        """
         if not isinstance(other, self.__class__):
-            return NotImplemented
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
 
         if self._edges_min.shape != other._edges_min.shape:
             return False
@@ -2285,11 +2419,17 @@ class TimeMapAxis:
         delta_max = self.time_max - other.time_max
 
         return (
-            np.allclose(delta_min.to_value("s"), 0.0, atol=1e-6)
-            and np.allclose(delta_max.to_value("s"), 0.0, atol=1e-6)
+            np.allclose(delta_min.to_value("s"), 0.0, **kwargs)
+            and np.allclose(delta_max.to_value("s"), 0.0, **kwargs)
             and self._interp == other._interp
             and self.name.upper() == other.name.upper()
         )
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other=other, atol=1e-6)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -2662,12 +2802,12 @@ class LabelMapAxis:
     node_type = "label"
 
     def __init__(self, labels, name=""):
-        unique_labels = set(labels)
+        unique_labels = np.unique(labels)
 
         if not len(unique_labels) == len(labels):
             raise ValueError("Node labels must be unique")
 
-        self._labels = np.array(labels)
+        self._labels = unique_labels
         self._name = name
 
     @property
@@ -2909,13 +3049,31 @@ class LabelMapAxis:
         str_ += fmt.format("labels", "{0}".format(list(self._labels)))
         return str_.expandtabs(tabsize=2)
 
-    def __eq__(self, other):
+    def is_allclose(self, other, **kwargs):
+        """Check if other map axis is all close.
+
+        Parameters
+        ----------
+        other : `LabelMapAxis`
+            Other map axis
+
+        Returns
+        -------
+        is_allclose : bool
+            Whether other axis is allclose
+        """
         if not isinstance(other, self.__class__):
-            return NotImplemented
+            return TypeError(f"Cannot compare {type(self)} and {type(other)}")
 
         name_equal = self.name.upper() == other.name.upper()
         labels_equal = np.all(self.center == other.center)
         return name_equal & labels_equal
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
+        return self.is_allclose(other=other)
 
     def __ne__(self, other):
         return not self.__eq__(other)

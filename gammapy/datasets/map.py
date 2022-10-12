@@ -5,8 +5,9 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 from regions import CircleSkyRegion
+import matplotlib.pyplot as plt
 from gammapy.data import GTI
-from gammapy.irf import EDispKernelMap, EDispMap, PSFKernel, PSFMap
+from gammapy.irf import EDispKernelMap, EDispMap, PSFKernel, PSFMap, RecoPSFMap
 from gammapy.maps import Map, MapAxis
 from gammapy.modeling.models import DatasetModels, FoVBackgroundModel
 from gammapy.stats import (
@@ -117,7 +118,7 @@ class MapDataset(Dataset):
         Mask to apply to the likelihood for fitting.
     psf : `~gammapy.irf.PSFMap` or `~gammapy.utils.fits.HDULocation`
         PSF kernel
-    edisp : `~gammapy.irf.EDispKernel` or `~gammapy.irf.EDispMap` or `~gammapy.utils.fits.HDULocation`
+    edisp : `~gammapy.irf.EDispMap` or `~gammapy.utils.fits.HDULocation`
         Energy dispersion kernel
     mask_safe : `~gammapy.maps.WcsNDMap` or `~gammapy.utils.fits.HDULocation`
         Mask defining the safe data range.
@@ -135,12 +136,13 @@ class MapDataset(Dataset):
     Examples
     --------
     >>> from gammapy.datasets import MapDataset
-    >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz", name="cta_dataset")
+    >>> filename = "$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz"
+    >>> dataset = MapDataset.read(filename, name="cta-dataset")
     >>> print(dataset)
     MapDataset
     ----------
     <BLANKLINE>
-      Name                            : cta_dataset
+      Name                            : cta-dataset
     <BLANKLINE>
       Total counts                    : 104317
       Total background counts         : 91507.70
@@ -223,7 +225,8 @@ class MapDataset(Dataset):
 
         if edisp and not isinstance(edisp, (EDispMap, EDispKernelMap, HDULocation)):
             raise ValueError(
-                f"'edisp' must be a 'EDispMap', `EDispKernelMap` or 'HDULocation' object, got {type(edisp)}"
+                "'edisp' must be a 'EDispMap', `EDispKernelMap` or 'HDULocation' "
+                f"object, got `{type(edisp)}` instead."
             )
 
         self.edisp = edisp
@@ -401,7 +404,7 @@ class MapDataset(Dataset):
 
     @property
     def energy_range(self):
-        """Energy range maps defined by the full mask (mask_safe and mask_fit)."""
+        """Energy range maps defined by the mask_safe and mask_fit."""
         return self._energy_range(self.mask)
 
     @property
@@ -416,7 +419,7 @@ class MapDataset(Dataset):
 
     @property
     def energy_range_total(self):
-        """Largest energy range among all pixels, defined by the full mask (mask_safe and mask_fit)."""
+        """Largest energy range among all pixels, defined by mask_safe and mask_fit."""
         energy_min_map, energy_max_map = self.energy_range
         return np.nanmin(energy_min_map.quantity), np.nanmax(energy_max_map.quantity)
 
@@ -453,7 +456,9 @@ class MapDataset(Dataset):
                 if self._background_cached is None:
                     self._background_cached = background * values
                 else:
-                    self._background_cached.quantity = background.quantity * values.value
+                    self._background_cached.quantity = (
+                        background.quantity * values.value
+                    )
             return self._background_cached
         else:
             return background
@@ -559,7 +564,10 @@ class MapDataset(Dataset):
                 kwargs["edisp"] = EDispMap.from_geom(geom_edisp)
 
         if geom_psf:
-            kwargs["psf"] = PSFMap.from_geom(geom_psf)
+            if "energy_true" in geom_psf.axes.names:
+                kwargs["psf"] = PSFMap.from_geom(geom_psf)
+            elif "energy" in geom_psf.axes.names:
+                kwargs["psf"] = RecoPSFMap.from_geom(geom_psf)
 
         kwargs.setdefault(
             "gti", GTI.create([] * u.s, [] * u.s, reference_time=reference_time)
@@ -614,9 +622,16 @@ class MapDataset(Dataset):
         >>> from gammapy.maps import WcsGeom, MapAxis
 
         >>> energy_axis = MapAxis.from_energy_bounds(1.0, 10.0, 4, unit="TeV")
-        >>> energy_axis_true = MapAxis.from_energy_bounds( 0.5, 20, 10, unit="TeV", name="energy_true")
-        >>> geom = WcsGeom.create(skydir=(83.633, 22.014), binsz=0.02, width=(2, 2), frame="icrs", proj="CAR", axes=[energy_axis])
-
+        >>> energy_axis_true = MapAxis.from_energy_bounds(
+                    0.5, 20, 10, unit="TeV", name="energy_true"
+                )
+        >>> geom = WcsGeom.create(
+                    skydir=(83.633, 22.014),
+                    binsz=0.02, width=(2, 2),
+                    frame="icrs",
+                    proj="CAR",
+                    axes=[energy_axis]
+                )
         >>> empty = MapDataset.create(geom=geom, energy_axis_true=energy_axis_true, name="empty")
         """
 
@@ -629,7 +644,9 @@ class MapDataset(Dataset):
         )
 
         kwargs.update(geoms)
-        return cls.from_geoms(reference_time=reference_time, name=name, **kwargs)
+        return cls.from_geoms(
+            reference_time=reference_time, name=name, meta_table=meta_table, **kwargs
+        )
 
     @property
     def mask_safe_image(self):
@@ -783,6 +800,11 @@ class MapDataset(Dataset):
         if self.mask_safe and other.mask_safe:
             self.mask_safe.stack(other.mask_safe)
 
+        if self.mask_fit and other.mask_fit:
+            self.mask_fit.stack(other.mask_fit)
+        elif other.mask_fit:
+            self.mask_fit = other.mask_fit.copy()
+
         if self.gti and other.gti:
             self.gti.stack(other.gti)
             self.gti = self.gti.union()
@@ -912,6 +934,8 @@ class MapDataset(Dataset):
         The residuals are extracted from the provided region, and the normalization
         used for its computation can be controlled using the method parameter.
 
+        The error bars are computed using the uncertainty on the excess with a symmetric assumption.
+
         Parameters
         ----------
         ax : `~matplotlib.axes.Axes`
@@ -932,7 +956,7 @@ class MapDataset(Dataset):
         --------
         >>> from gammapy.datasets import MapDataset
         >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz")
-        >>> kwargs = {"markerfacecolor": "blue", "markersize":8, "marker":'s', } #plot big blue squares
+        >>> kwargs = {"markerfacecolor": "blue", "markersize":8, "marker":'s'}
         >>> dataset.plot_residuals_spectral(method="diff/sqrt(model)", **kwargs) # doctest: +SKIP
 
         """
@@ -950,25 +974,27 @@ class MapDataset(Dataset):
         npred_spec = npred.get_spectrum(region)
         residuals = self._compute_residuals(counts_spec, npred_spec, method)
 
+        if self.stat_type == "wstat":
+            counts_off = (self.counts_off * mask).get_spectrum(region)
+
+            with np.errstate(invalid="ignore"):
+                alpha = (self.background * mask).get_spectrum(region) / counts_off
+
+            mu_sig = (self.npred_signal() * mask).get_spectrum(region)
+            stat = WStatCountsStatistic(
+                n_on=counts_spec,
+                n_off=counts_off,
+                alpha=alpha,
+                mu_sig=mu_sig,
+            )
+        elif self.stat_type == "cash":
+            stat = CashCountsStatistic(counts_spec.data, npred_spec.data)
+        excess_error = stat.error
+
         if method == "diff":
-            if self.stat_type == "wstat":
-                counts_off = (self.counts_off * mask).get_spectrum(region)
-
-                with np.errstate(invalid="ignore"):
-                    alpha = (self.background * mask).get_spectrum(region) / counts_off
-
-                mu_sig = (self.npred_signal() * mask).get_spectrum(region)
-                stat = WStatCountsStatistic(
-                    n_on=counts_spec,
-                    n_off=counts_off,
-                    alpha=alpha,
-                    mu_sig=mu_sig,
-                )
-            elif self.stat_type == "cash":
-                stat = CashCountsStatistic(counts_spec.data, npred_spec.data)
-            yerr = stat.error
+            yerr = excess_error
         elif method == "diff/sqrt(model)":
-            yerr = np.ones_like(residuals.data)
+            yerr = excess_error / np.sqrt(npred_spec.data)
         else:
             raise ValueError(
                 'Invalid method, choose between "diff" and "diff/sqrt(model)"'
@@ -1025,10 +1051,10 @@ class MapDataset(Dataset):
         >>> import astropy.units as u
         >>> from gammapy.datasets import MapDataset
         >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz")
-        >>> reg = CircleSkyRegion(SkyCoord(0,0, unit="deg", frame="galactic"), radius=1.0*u.deg)
+        >>> reg = CircleSkyRegion(SkyCoord(0,0, unit="deg", frame="galactic"), radius=1.0 * u.deg)
         >>> kwargs_spatial = {"cmap": "RdBu_r", "vmin":-5, "vmax":5, "add_cbar": True}
-        >>> kwargs_spectral = {"region":reg, "markerfacecolor": "blue", "markersize":8, "marker":'s'}
-        >>> dataset.plot_residuals(kwargs_spatial=kwargs_spatial, kwargs_spectral=kwargs_spectral) # doctest: +SKIP
+        >>> kwargs_spectral = {"region":reg, "markerfacecolor": "blue", "markersize": 8, "marker": "s"}  # noqa: E501
+        >>> dataset.plot_residuals(kwargs_spatial=kwargs_spatial, kwargs_spectral=kwargs_spectral) # doctest: +SKIP noqa: E501
         """
         ax_spatial, ax_spectral = get_axes(
             ax_spatial,
@@ -1091,6 +1117,10 @@ class MapDataset(Dataset):
         exclude_primary = slice(1, None)
 
         hdu_primary = fits.PrimaryHDU()
+
+        header = hdu_primary.header
+        header["NAME"] = self.name
+
         hdulist = fits.HDUList([hdu_primary])
         if self.counts is not None:
             hdulist += self.counts.to_hdulist(hdu="counts")[exclude_primary]
@@ -1202,7 +1232,10 @@ class MapDataset(Dataset):
         return cls(**kwargs)
 
     def write(self, filename, overwrite=False):
-        """Write map dataset to file.
+        """Write Dataset to file.
+
+        A MapDataset is serialised using the GADF format with a WCS geometry.
+        A SpectrumDataset uses the same format, with a RegionGeom.
 
         Parameters
         ----------
@@ -1215,6 +1248,7 @@ class MapDataset(Dataset):
 
     @classmethod
     def _read_lazy(cls, name, filename, cache, format=format):
+        name = make_name(name)
         kwargs = {"name": name}
         try:
             kwargs["gti"] = GTI.read(filename)
@@ -1254,7 +1288,7 @@ class MapDataset(Dataset):
 
     @classmethod
     def read(cls, filename, name=None, lazy=False, cache=True, format="gadf"):
-        """Read map dataset from file.
+        """Read a dataset from file.
 
         Parameters
         ----------
@@ -1274,15 +1308,19 @@ class MapDataset(Dataset):
         dataset : `MapDataset`
             Map dataset.
         """
-        name = make_name(name)
+
+        if name is None:
+            header = fits.getheader(str(make_path(filename)))
+            name = header.get("NAME", name)
+        ds_name = make_name(name)
 
         if lazy:
             return cls._read_lazy(
-                name=name, filename=filename, cache=cache, format=format
+                name=ds_name, filename=filename, cache=cache, format=format
             )
         else:
             with fits.open(str(make_path(filename)), memmap=False) as hdulist:
-                return cls.from_hdulist(hdulist, name=name, format=format)
+                return cls.from_hdulist(hdulist, name=ds_name, format=format)
 
     @classmethod
     def from_dict(cls, data, lazy=False, cache=True):
@@ -1290,6 +1328,11 @@ class MapDataset(Dataset):
         filename = make_path(data["filename"])
         dataset = cls.read(filename, name=data["name"], lazy=lazy, cache=cache)
         return dataset
+
+    @property
+    def _counts_statistic(self):
+        """Counts statistics of the dataset."""
+        return CashCountsStatistic(self.counts, self.background)
 
     def info_dict(self, in_safe_data_range=True):
         """Info dict with summary statistics, summed over energy
@@ -1313,19 +1356,20 @@ class MapDataset(Dataset):
             mask = slice(None)
 
         counts = 0
+        background, excess, sqrt_ts = np.nan, np.nan, np.nan
         if self.counts:
-            counts = self.counts.data[mask].sum()
+            summed_stat = self._counts_statistic[mask].sum()
+            counts = summed_stat.n_on
+
+            if self.background:
+                background = summed_stat.n_bkg
+                excess = summed_stat.n_sig
+                sqrt_ts = summed_stat.sqrt_ts
 
         info["counts"] = int(counts)
-
-        background = np.nan
-        if self.background:
-            background = self.background.data[mask].sum()
-
+        info["excess"] = float(excess)
+        info["sqrt_ts"] = sqrt_ts
         info["background"] = float(background)
-
-        info["excess"] = counts - background
-        info["sqrt_ts"] = CashCountsStatistic(counts, background).sqrt_ts
 
         npred = np.nan
         if self.models or not np.isnan(background):
@@ -1706,14 +1750,14 @@ class MapDataset(Dataset):
         >>> sliced = dataset.slice_by_idx(slices)
         >>> print(sliced.geoms["geom"])
         WcsGeom
-	        axes       : ['lon', 'lat', 'energy']
-	        shape      : (320, 240, 3)
-	        ndim       : 3
-	        frame      : galactic
-	        projection : CAR
-	        center     : 0.0 deg, 0.0 deg
-	        width      : 8.0 deg x 6.0 deg
-	        wcs ref    : 0.0 deg, 0.0 deg
+                axes       : ['lon', 'lat', 'energy']
+                shape      : (320, 240, 3)
+                ndim       : 3
+                frame      : galactic
+                projection : CAR
+                center     : 0.0 deg, 0.0 deg
+                width      : 8.0 deg x 6.0 deg
+                wcs ref    : 0.0 deg, 0.0 deg
         """
         name = make_name(name)
         kwargs = {"gti": self.gti, "name": name, "meta_table": self.meta_table}
@@ -1870,20 +1914,14 @@ class MapDataset(Dataset):
 
         Parameters
         ----------
-        fig : `~matplotlib.figure.Figure`
-            Figure to add AxesSubplot on.
+        figsize : tuple
+            Size of the figure.
 
-        Returns
-        -------
-        ax1, ax2, ax3 : `~matplotlib.axes.AxesSubplot`
-            Counts, excess and exposure.
         """
 
         def plot_mask(ax, mask, **kwargs):
             if mask is not None:
                 mask.plot_mask(ax=ax, **kwargs)
-
-        import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(
             ncols=2,
@@ -2043,7 +2081,7 @@ class MapDatasetOnOff(MapDataset):
         return alpha
 
     def npred_background(self):
-        """Predicted background counts (mu_bkg) estimated from the marginalized likelihood estimate.
+        """Predicted background counts estimated from the marginalized likelihood estimate.
 
         See :ref:`wstat`
 
@@ -2099,6 +2137,11 @@ class MapDatasetOnOff(MapDataset):
         )
         return np.nan_to_num(on_stat_)
 
+    @property
+    def _counts_statistic(self):
+        """Counts statistics of the dataset."""
+        return WStatCountsStatistic(self.counts, self.counts_off, self.alpha)
+
     @classmethod
     def from_geoms(
         cls,
@@ -2110,7 +2153,7 @@ class MapDatasetOnOff(MapDataset):
         name=None,
         **kwargs,
     ):
-        """Create a MapDatasetOnOff object  switch zero filled maps according to the specified geometries
+        """Create an empty `MapDatasetOnOff` object according to the specified geometries
 
         Parameters
         ----------
@@ -2206,6 +2249,7 @@ class MapDatasetOnOff(MapDataset):
 
     def to_map_dataset(self, name=None):
         """Convert a MapDatasetOnOff to  MapDataset
+
         The background model template is taken as alpha * counts_off
 
         Parameters
@@ -2298,8 +2342,8 @@ class MapDatasetOnOff(MapDataset):
             acceptance_off = total_off / total_alpha
             average_alpha = total_alpha.data.sum() / total_off.data.sum()
 
-        # For the bins where the stacked OFF counts equal 0, the alpha value is performed by weighting on the total
-        # OFF counts of each run
+        # For the bins where the stacked OFF counts equal 0, the alpha value is
+        # performed by weighting on the total OFF counts of each run
         is_zero = total_off.data == 0
         acceptance_off.data[is_zero] = 1 / average_alpha
 
@@ -2368,12 +2412,11 @@ class MapDatasetOnOff(MapDataset):
 
         return hdulist
 
-
     @classmethod
     def _read_lazy(cls, filename, name=None, cache=True, format="gadf"):
         raise NotImplementedError(
-                f"Lazy loading is not implemented for {cls}, please use option lazy=False."
-                )
+            f"Lazy loading is not implemented for {cls}, please use option lazy=False."
+        )
 
     @classmethod
     def from_hdulist(cls, hdulist, name=None, format="gadf"):
@@ -2485,36 +2528,30 @@ class MapDatasetOnOff(MapDataset):
         else:
             mask = slice(None)
 
+        summed_stat = self._counts_statistic[mask].sum()
+
         counts_off = 0
         if self.counts_off is not None:
-            counts_off = self.counts_off.data[mask].sum()
+            counts_off = summed_stat.n_off
 
         info["counts_off"] = int(counts_off)
 
         acceptance = 1
         if self.acceptance:
-            # TODO: handle energy dependent a_on / a_off
             acceptance = self.acceptance.data[mask].sum()
 
         info["acceptance"] = float(acceptance)
 
         acceptance_off = np.nan
+        alpha = np.nan
+
         if self.acceptance_off:
-            acceptance_off = acceptance * counts_off / info["background"]
+            alpha = summed_stat.alpha
+            acceptance_off = acceptance / alpha
 
         info["acceptance_off"] = float(acceptance_off)
-
-        alpha = np.nan
-        if self.acceptance_off and self.acceptance:
-            alpha = np.mean(self.alpha.data[mask])
-
         info["alpha"] = float(alpha)
 
-        info["sqrt_ts"] = WStatCountsStatistic(
-            info["counts"],
-            info["counts_off"],
-            acceptance / acceptance_off,
-        ).sqrt_ts
         info["stat_sum"] = self.stat_sum()
         return info
 
@@ -2526,13 +2563,12 @@ class MapDatasetOnOff(MapDataset):
         Acceptance is the average of all acceptances while acceptance OFF
         is taken such that number of excess is preserved in the on_region.
 
-        Effective area is taken from the average exposure divided by the livetime.
-        Here we assume it is the sum of the GTIs.
+        Effective area is taken from the average exposure.
 
         The energy dispersion kernel is obtained at the on_region center.
         Only regions with centers are supported.
 
-        The model is not exported to the ~gammapy.dataset.SpectrumDataset.
+        The models are not exported to the ~gammapy.dataset.SpectrumDatasetOnOff.
         It must be set after the dataset extraction.
 
         Parameters

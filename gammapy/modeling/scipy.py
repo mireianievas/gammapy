@@ -18,6 +18,7 @@ def optimize_scipy(parameters, function, store_trace=False, **kwargs):
     pars = [par.factor for par in parameters.free_parameters]
 
     bounds = []
+
     for par in parameters.free_parameters:
         parmin = par.factor_min if not np.isnan(par.factor_min) else None
         parmax = par.factor_max if not np.isnan(par.factor_max) else None
@@ -65,7 +66,7 @@ def _confidence_scipy_brentq(
 ):
 
     ts_diff = TSDifference(
-        function, parameters, parameter, reoptimize, ts_diff=sigma ** 2
+        function, parameters, parameter, reoptimize, ts_diff=sigma**2
     )
 
     lower_bound = parameter.factor
@@ -113,7 +114,7 @@ def confidence_scipy(parameters, parameter, function, sigma, reoptimize=True, **
             sigma=sigma,
             upper=False,
             reoptimize=reoptimize,
-            **kwargs
+            **kwargs,
         )
 
     with parameters.restore_status():
@@ -124,7 +125,7 @@ def confidence_scipy(parameters, parameter, function, sigma, reoptimize=True, **
             sigma=sigma,
             upper=True,
             reoptimize=reoptimize,
-            **kwargs
+            **kwargs,
         )
 
     result.update(result_errp)

@@ -1,4 +1,5 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+import operator
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose
@@ -17,6 +18,7 @@ from gammapy.modeling.models import (
     ConstantSpectralModel,
     ConstantTemporalModel,
     GaussianSpatialModel,
+    LogParabolaSpectralModel,
     Models,
     PointSpatialModel,
     PowerLawNormSpectralModel,
@@ -27,7 +29,7 @@ from gammapy.modeling.models import (
     TemplateSpatialModel,
     create_fermi_isotropic_diffuse_model,
 )
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 @pytest.fixture(scope="session")
@@ -61,7 +63,9 @@ def gti():
 
 @pytest.fixture(scope="session")
 def diffuse_model():
-    axis = MapAxis.from_nodes([0.1, 100], name="energy_true", unit="TeV", interp="log")
+    axis = MapAxis.from_edges(
+        [0.1, 1, 100], name="energy_true", unit="TeV", interp="log"
+    )
     m = Map.create(
         npix=(4, 3), binsz=2, axes=[axis], unit="cm-2 s-1 MeV-1 sr-1", frame="galactic"
     )
@@ -227,6 +231,21 @@ def test_background_model_io(tmpdir, background):
     assert bkg_read.filename == filename
 
 
+def test_background_model_copy(background):
+    background_copy = background.copy()
+    bkg = TemplateNPredModel(background_copy)
+    bkg.map.data += 1.0
+    assert np.all(
+        background_copy.data == background.data
+    )  # Check that the original map is unchanged
+
+    bkg_copy = bkg.copy()
+    bkg_copy.map.data += 1.0
+    assert np.all(
+        bkg_copy.map.data == bkg.map.data
+    )  # Check that the map has now changed
+
+
 def test_parameters(sky_models):
     parnames = [
         "index",
@@ -245,9 +264,11 @@ def test_parameters(sky_models):
     p2 = sky_models[0].parameters["lon_0"]
     assert p1 is p2
 
+
 def test_str(sky_models):
     assert "Component 0" in str(sky_models)
     assert "Component 1" in str(sky_models)
+
 
 def test_get_item(sky_models):
     model = sky_models["source-2"]
@@ -258,6 +279,7 @@ def test_get_item(sky_models):
 
     with pytest.raises(ValueError):
         sky_models["spam"]
+
 
 def test_names(sky_models):
     assert sky_models.names == ["source-2", "source-3"]
@@ -617,7 +639,7 @@ class MyCustomGaussianModel(SpatialModel):
         sep = angular_separation(lon, lat, lon_0, lat_0)
 
         exponent = -0.5 * (sep / sigma) ** 2
-        norm = 1 / (2 * np.pi * sigma ** 2)
+        norm = 1 / (2 * np.pi * sigma**2)
         return norm * np.exp(exponent)
 
     @property
@@ -640,7 +662,6 @@ def test_energy_dependent_model():
     assert_allclose(model.data.sum(), 9.9e-11, rtol=1e-3)
 
 
-@requires_dependency("matplotlib")
 def test_plot_grid(geom_true):
     spatial_model = MyCustomGaussianModel(frame="galactic")
     with mpl_plot_check():
@@ -669,3 +690,25 @@ def test_integrate_geom():
     integral = sky_model.integrate_geom(geom).data
 
     assert_allclose(integral / 1e-12, [[[5.299]], [[2.460]], [[1.142]]], rtol=1e-3)
+
+
+def test_compound_spectral_model(caplog):
+    spatial_model = GaussianSpatialModel(
+        lon_0="3 deg", lat_0="4 deg", sigma="3 deg", frame="galactic"
+    )
+    pwl = PowerLawSpectralModel(
+        index=2, amplitude="1e-11 cm-2 s-1 TeV-1", reference="1 TeV"
+    )
+    lp = LogParabolaSpectralModel(
+        amplitude="1e-12 cm-2 s-1 TeV-1", reference="10 TeV", alpha=2.0, beta=1.0
+    )
+    temporal_model = ConstantTemporalModel()
+
+    spectral_model = CompoundSpectralModel(pwl, lp, operator.add)
+    m = SkyModel(
+        spatial_model=spatial_model,
+        spectral_model=spectral_model,
+        temporal_model=temporal_model,
+        name="source-1",
+    )
+    assert_allclose(m.spectral_model(5 * u.TeV).value, 2.87e-12, rtol=1e-2)

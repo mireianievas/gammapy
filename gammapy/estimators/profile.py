@@ -6,6 +6,7 @@ from astropy import units as u
 from astropy.convolution import Box1DKernel, Gaussian1DKernel
 from astropy.coordinates import Angle
 from astropy.table import Table
+import matplotlib.pyplot as plt
 from .core import Estimator
 
 __all__ = ["ImageProfile", "ImageProfileEstimator"]
@@ -58,7 +59,7 @@ class ImageProfileEstimator(Estimator):
             raise ValueError("Not a valid method, choose either 'sum' or 'mean'")
 
         if axis not in ["lon", "lat", "radial"]:
-            raise ValueError("Not a valid axis, choose either 'lon' or 'lat'")
+            raise ValueError("Not a valid axis, choose either 'lon', 'lat' or 'radial'")
 
         if axis == "radial" and center is None:
             raise ValueError("Please provide center coordinate for radial profiles")
@@ -101,7 +102,7 @@ class ImageProfileEstimator(Estimator):
                 profile_err = np.sqrt(profile)
             elif image_err:
                 # gaussian error propagation
-                err_sum = scipy.ndimage.sum(image_err.data ** 2, labels.data, index)
+                err_sum = scipy.ndimage.sum(image_err.data**2, labels.data, index)
                 profile_err = np.sqrt(err_sum)
 
         elif p["method"] == "mean":
@@ -109,7 +110,7 @@ class ImageProfileEstimator(Estimator):
             profile = scipy.ndimage.mean(image.data, labels.data, index)
             if image_err:
                 N = scipy.ndimage.sum(~np.isnan(image_err.data), labels.data, index)
-                err_sum = scipy.ndimage.sum(image_err.data ** 2, labels.data, index)
+                err_sum = scipy.ndimage.sum(image_err.data**2, labels.data, index)
                 profile_err = np.sqrt(err_sum) / N
 
         return profile, profile_err
@@ -251,7 +252,7 @@ class ImageProfile:
                 profile_err = table["profile_err"]
                 # use gaussian error propagation
                 box = Box1DKernel(width)
-                err_sum = scipy.ndimage.convolve(profile_err ** 2, box.array ** 2)
+                err_sum = scipy.ndimage.convolve(profile_err**2, box.array**2)
                 smoothed_err = np.sqrt(err_sum)
         elif kernel == "gauss":
             smoothed = scipy.ndimage.gaussian_filter(
@@ -261,7 +262,7 @@ class ImageProfile:
             if "profile_err" in table.colnames:
                 profile_err = table["profile_err"]
                 gauss = Gaussian1DKernel(width)
-                err_sum = scipy.ndimage.convolve(profile_err ** 2, gauss.array ** 2)
+                err_sum = scipy.ndimage.convolve(profile_err**2, gauss.array**2)
                 smoothed_err = np.sqrt(err_sum)
         else:
             raise ValueError("Not valid kernel choose either 'box' or 'gauss'")
@@ -286,8 +287,6 @@ class ImageProfile:
         ax : `~matplotlib.axes.Axes`
             Axes object
         """
-        import matplotlib.pyplot as plt
-
         if ax is None:
             ax = plt.gca()
 
@@ -314,8 +313,6 @@ class ImageProfile:
         ax : `~matplotlib.axes.Axes`
             Axes object
         """
-        import matplotlib.pyplot as plt
-
         if ax is None:
             ax = plt.gca()
 
@@ -365,6 +362,8 @@ class ImageProfile:
 
         Parameters
         ----------
+        figsize : tuple
+            Size of the figure.
         **kwargs : dict
             Keyword arguments passed to `ImageProfile.plot_profile()`
 
@@ -373,8 +372,6 @@ class ImageProfile:
         ax : `~matplotlib.axes.Axes`
             Axes object
         """
-        import matplotlib.pyplot as plt
-
         fig = plt.figure(figsize=figsize)
         ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
         ax = self.plot(ax, **kwargs)

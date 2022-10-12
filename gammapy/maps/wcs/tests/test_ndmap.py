@@ -6,7 +6,6 @@ import astropy.units as u
 from astropy.convolution import Box2DKernel, Gaussian2DKernel
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from astropy.table import Table
 from regions import CircleSkyRegion, PointSkyRegion, RectangleSkyRegion
 from gammapy.datasets.map import MapEvaluator
 from gammapy.irf import PSFKernel, PSFMap
@@ -16,7 +15,7 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
     SkyModel,
 )
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 axes1 = [MapAxis(np.logspace(0.0, 3.0, 3), interp="log", name="spam")]
 axes2 = [
@@ -320,7 +319,7 @@ def test_interp_methods():
     assert_allclose(actual, 4.2)
 
     actual = m.interp_by_coord({"lon": 0.07, "lat": 0.03}, method="nearest")
-    assert_allclose(actual, 3.)
+    assert_allclose(actual, 3.0)
 
 
 def test_wcsndmap_interp_by_coord_fill_value():
@@ -420,13 +419,18 @@ def test_wcsndmap_upsample(npix, binsz, frame, proj, skydir, axes):
 
 def test_wcsndmap_upsample_axis():
     axis = MapAxis.from_edges([1, 2, 3, 4], name="test")
-    geom = WcsGeom.create(npix=(4, 4), axes=[axis])
-    m = WcsNDMap(geom, unit="m2")
-    m.data += 1
+    geom = WcsGeom.create(npix=(2, 2), axes=[axis])
+    test_nodes = np.arange(3)
+    test_data = test_nodes.reshape(3, 1, 1)
+    spatial_data = np.zeros((2, 2))
+    data = spatial_data + 0.5 * test_data
+    m = WcsNDMap(geom, unit="m2", data=data)
 
     m2 = m.upsample(2, preserve_counts=True, axis_name="test")
-    assert m2.data.shape == (6, 4, 4)
+    assert m2.data.shape == (6, 2, 2)
     assert_allclose(m.data.sum(), m2.data.sum())
+
+    assert_allclose(m2.data[:, 0, 0], [0, 0, 0.25, 0.25, 0.5, 0.5])
 
 
 def test_wcsndmap_downsample_axis():
@@ -594,7 +598,6 @@ def test_convolve_kernel_size_error():
         m.convolve(kernel)
 
 
-@requires_dependency("matplotlib")
 def test_plot():
     axis = MapAxis([0, 1], node_type="edges")
     m = WcsNDMap.create(binsz=0.1 * u.deg, width=1 * u.deg, axes=[axis])
@@ -602,7 +605,6 @@ def test_plot():
         m.plot(add_cbar=True)
 
 
-@requires_dependency("matplotlib")
 def test_plot_grid():
     axis = MapAxis([0, 1, 2], node_type="edges")
     m = WcsNDMap.create(binsz=0.1 * u.deg, width=1 * u.deg, axes=[axis])
@@ -610,7 +612,6 @@ def test_plot_grid():
         m.plot_grid()
 
 
-@requires_dependency("matplotlib")
 def test_plot_allsky():
     axis = MapAxis([0, 1], node_type="edges")
     m = WcsNDMap.create(binsz=10 * u.deg, axes=[axis])
@@ -618,7 +619,6 @@ def test_plot_allsky():
         m.plot()
 
 
-@requires_dependency("matplotlib")
 def test_plot_nan():
     m = Map.create(width=10, binsz=1)
     m.data += np.nan
@@ -721,7 +721,7 @@ def get_npred_map():
     )
 
     spatial_model = GaussianSpatialModel(
-        lon_0="0 deg", lat_0="0 deg", sigma="0.2 deg", frame="galactic"
+        lon_0="0.015 deg", lat_0="-0.037 deg", sigma="0.2 deg", frame="galactic"
     )
     spectral_model = PowerLawSpectralModel(amplitude="1e-11 cm-2 s-1 TeV-1")
     skymodel = SkyModel(spatial_model=spatial_model, spectral_model=spectral_model)
@@ -738,17 +738,11 @@ def test_map_sampling():
 
     nmap = WcsNDMap(geom=eval.geom, data=npred.data)
     coords = nmap.sample_coord(n_events=2, random_state=0)
-    skycoord = coords.skycoord
 
-    events = Table()
-    events["RA_TRUE"] = skycoord.icrs.ra
-    events["DEC_TRUE"] = skycoord.icrs.dec
-    events["ENERGY_TRUE"] = coords["energy_true"]
-
-    assert len(events) == 2
-    assert_allclose(events["RA_TRUE"].data, [266.307081, 266.442255], rtol=1e-5)
-    assert_allclose(events["DEC_TRUE"].data, [-28.753408, -28.742696], rtol=1e-5)
-    assert_allclose(events["ENERGY_TRUE"].data, [2.755397, 1.72316], rtol=1e-5)
+    assert len(coords["lon"]) == 2
+    assert_allclose(coords.skycoord.icrs.ra.deg, [266.204197, 266.451241], rtol=1e-5)
+    assert_allclose(coords.skycoord.icrs.dec.deg, [-28.862369, -29.075469], rtol=1e-5)
+    assert_allclose(coords["energy_true"].data, [2.363293, 2.342388], rtol=1e-5)
 
     assert coords["lon"].unit == "deg"
     assert coords["lat"].unit == "deg"
@@ -837,7 +831,9 @@ def test_binary_erode():
     assert_allclose(mask.data.sum(), 4832)
 
     mask = mask.binary_erode(width=0.2 * u.deg, kernel="box", use_fft=True)
-    assert_allclose(mask.data.sum(), 3372)
+    # Due to fft noise the result is not exact here.
+    # See https://github.com/gammapy/gammapy/issues/3662
+    assert_allclose(mask.data.sum(), 3372, atol=20)
 
 
 def test_binary_dilate():
@@ -848,7 +844,9 @@ def test_binary_dilate():
     assert_allclose(mask.data.sum(), 8048)
 
     mask = mask.binary_dilate(width=(10, 10), kernel="box")
-    assert_allclose(mask.data.sum(), 9203, rtol=3e-3)
+    # Due to fft noise the result is not exact here.
+    # See https://github.com/gammapy/gammapy/issues/3662
+    assert_allclose(mask.data.sum(), 9203, atol=20)
 
 
 def test_binary_dilate_erode_3d():

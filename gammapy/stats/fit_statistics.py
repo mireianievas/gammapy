@@ -148,7 +148,7 @@ def wstat(n_on, n_off, alpha, mu_sig, mu_bkg=None, extra_terms=True):
     * `Habilitation M. de Naurois, p. 141
       <http://inspirehep.net/record/1122589/files/these_short.pdf>`_
     * `XSPEC page on Poisson data with Poisson background
-      <https://heasarc.nasa.gov/xanadu/xspec/manual/XSappendixStatistics.html>`_
+      <https://heasarc.gsfc.nasa.gov/xanadu/xspec/manual/XSappendixStatistics.html>`_
     """
     # Note: This is equivalent to what's defined on the XSPEC page under the
     # following assumptions
@@ -206,7 +206,7 @@ def get_wstat_mu_bkg(n_on, n_off, alpha, mu_sig):
 
     # NOTE: Corner cases in the docs are all handled correctly by this formula
     C = alpha * (n_on + n_off) - (1 + alpha) * mu_sig
-    D = np.sqrt(C ** 2 + 4 * alpha * (alpha + 1) * n_off * mu_sig)
+    D = np.sqrt(C**2 + 4 * alpha * (alpha + 1) * n_off * mu_sig)
     with np.errstate(invalid="ignore", divide="ignore"):
         mu_bkg = (C + D) / (2 * alpha * (alpha + 1))
 

@@ -108,8 +108,9 @@ def test_compute_lima_on_off_image():
     desired = significance.crop((11, 11)).data
 
     # Set boundary to NaN in reference image
-    # The absolute tolerance is low because the method used here is slightly different from the one used in HGPS
-    # n_off is convolved as well to ensure the method applies to true ON-OFF datasets
+    # The absolute tolerance is low because the method used here is slightly
+    # different from the one used in HGPS n_off is convolved as well to ensure
+    # the method applies to true ON-OFF datasets
     assert_allclose(actual, desired, atol=0.2, rtol=1e-5)
 
     actual = np.nan_to_num(results["npred_background"].crop((11, 11)).data)
@@ -119,8 +120,9 @@ def test_compute_lima_on_off_image():
     desired = background_corr.crop((11, 11)).data
 
     # Set boundary to NaN in reference image
-    # The absolute tolerance is low because the method used here is slightly different from the one used in HGPS
-    # n_off is convolved as well to ensure the method applies to true ON-OFF datasets
+    # The absolute tolerance is low because the method used here is slightly different
+    # from the one used in HGPS n_off is convolved as well to ensure the method applies
+    # to true ON-OFF datasets
     assert_allclose(actual, desired, atol=0.2, rtol=1e-5)
 
 
@@ -141,7 +143,7 @@ def test_significance_map_estimator_map_dataset(simple_dataset):
 
 
 def test_significance_map_estimator_map_dataset_exposure(simple_dataset):
-    simple_dataset.exposure += 1e10 * u.cm ** 2 * u.s
+    simple_dataset.exposure += 1e10 * u.cm**2 * u.s
     axis = simple_dataset.exposure.geom.axes[0]
     simple_dataset.psf = PSFMap.from_gauss(axis, sigma="0.05 deg")
 
@@ -161,6 +163,21 @@ def test_significance_map_estimator_map_dataset_exposure(simple_dataset):
 
     assert_allclose(result["npred_excess"].data.sum(), 19733.602, rtol=1e-3)
     assert_allclose(result["sqrt_ts"].data[0, 10, 10], 4.217129, rtol=1e-3)
+
+    # without mask safe
+    simple_dataset_no_mask = MapDataset(
+        counts=simple_dataset.counts,
+        exposure=simple_dataset.exposure,
+        background=simple_dataset.background,
+        psf=simple_dataset.psf,
+        edisp=simple_dataset.edisp,
+    )
+
+    simple_dataset_no_mask.models = [model]
+
+    result_no_mask = estimator.run(simple_dataset_no_mask)
+    assert_allclose(result_no_mask["npred_excess"].data.sum(), 19733.602, rtol=1e-3)
+    assert_allclose(result_no_mask["sqrt_ts"].data[0, 10, 10], 4.217129, rtol=1e-3)
 
 
 def test_excess_map_estimator_map_dataset_on_off_no_correlation(

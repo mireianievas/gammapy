@@ -6,6 +6,7 @@ from numpy.testing import assert_allclose
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
+import matplotlib.pyplot as plt
 
 __all__ = [
     "assert_quantity_allclose",
@@ -210,7 +211,6 @@ def mpl_plot_check():
     than writing to disk.
     """
     from io import BytesIO
-    import matplotlib.pyplot as plt
 
     class MPLPlotCheck:
         def __enter__(self):

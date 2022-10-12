@@ -1,19 +1,22 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import collections.abc
 import copy
+import inspect
 import logging
+from itertools import zip_longest
 import numpy as np
-from astropy.io import fits
+import astropy.units as u
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from astropy.time import Time
 from astropy.units import Quantity
-import astropy.units as u
+from astropy.utils import lazyproperty
+import matplotlib.pyplot as plt
+from gammapy import __version__
 from gammapy.utils.fits import LazyFitsData, earth_location_to_dict
 from gammapy.utils.scripts import make_path
 from gammapy.utils.testing import Checker
 from gammapy.utils.time import time_ref_to_dict, time_relative_to_ref
-from astropy.utils import lazyproperty
-from gammapy import __version__
 from .event_list import EventList, EventListChecker
 from .filters import ObservationFilter
 from .gti import GTI
@@ -84,7 +87,6 @@ class Observation:
         self._events = events
         self.obs_filter = obs_filter or ObservationFilter()
 
-
     @property
     def rad_max(self):
         # prevent circular import
@@ -122,7 +124,7 @@ class Observation:
     @property
     def available_irfs(self):
         """Which IRFs are available"""
-        return [ _ for _ in self.available_hdus if _ not in ["events", "gti"]]
+        return [_ for _ in self.available_hdus if _ not in ["events", "gti"]]
 
     @property
     def events(self):
@@ -135,7 +137,9 @@ class Observation:
         return gti
 
     @staticmethod
-    def _get_obs_info(pointing, deadtime_fraction, time_start, time_stop, reference_time, location):
+    def _get_obs_info(
+        pointing, deadtime_fraction, time_start, time_stop, reference_time, location
+    ):
         """Create obs info dict from in memory data"""
         obs_info = {
             "RA_PNT": pointing.icrs.ra.deg,
@@ -143,8 +147,8 @@ class Observation:
             "DEADC": 1 - deadtime_fraction,
         }
         obs_info.update(time_ref_to_dict(reference_time))
-        obs_info['TSTART'] = time_relative_to_ref(time_start, obs_info).to_value(u.s)
-        obs_info['TSTOP'] = time_relative_to_ref(time_stop, obs_info).to_value(u.s)
+        obs_info["TSTART"] = time_relative_to_ref(time_start, obs_info).to_value(u.s)
+        obs_info["TSTOP"] = time_relative_to_ref(time_stop, obs_info).to_value(u.s)
 
         if location is not None:
             obs_info.update(earth_location_to_dict(location))
@@ -183,7 +187,7 @@ class Observation:
             Stop time of observation as `~astropy.time.Time` or duration
             relative to `reference_time`
         irfs: dict
-            IRFs used for simulating the observation: `bkg`, `aeff`, `psf`, `edisp`
+            IRFs used for simulating the observation: `bkg`, `aeff`, `psf`, `edisp`, `rad_max`
         deadtime_fraction : float, optional
             Deadtime fraction, defaults to 0
         reference_time : `~astropy.time.Time`
@@ -218,6 +222,7 @@ class Observation:
             bkg=irfs.get("bkg"),
             edisp=irfs.get("edisp"),
             psf=irfs.get("psf"),
+            rad_max=irfs.get("rad_max"),
         )
 
     @property
@@ -272,7 +277,13 @@ class Observation:
         """Observation info dictionary."""
         meta = self._obs_info.copy() if self._obs_info is not None else {}
         if self.events is not None:
-            meta.update({k: v for k, v in self.events.table.meta.items() if not k.startswith('HDU')})
+            meta.update(
+                {
+                    k: v
+                    for k, v in self.events.table.meta.items()
+                    if not k.startswith("HDU")
+                }
+            )
         return meta
 
     @lazyproperty
@@ -338,7 +349,7 @@ class Observation:
         checker = ObservationChecker(self)
         return checker.run(checks=checks)
 
-    def peek(self, figsize=(12, 10)):
+    def peek(self, figsize=(15, 10)):
         """Quick-look plots in a few panels.
 
         Parameters
@@ -346,45 +357,56 @@ class Observation:
         figsize : tuple
             Figure size
         """
-        import matplotlib.pyplot as plt
 
-        n_irfs = len(self.available_hdus)
+        plottable_hds = ["events", "aeff", "psf", "edisp", "bkg", "rad_max"]
+
+        plot_hdus = list(set(plottable_hds) & set(self.available_hdus))
+        plot_hdus.sort()
+
+        n_irfs = len(plot_hdus)
+        nrows = n_irfs // 2
+        ncols = 2 + n_irfs % 2
 
         fig, axes = plt.subplots(
-            nrows=n_irfs // 2,
-            ncols=2 + n_irfs % 2,
+            nrows=nrows,
+            ncols=ncols,
             figsize=figsize,
-            gridspec_kw={"wspace": 0.25, "hspace": 0.25},
+            gridspec_kw={"wspace": 0.3, "hspace": 0.3},
         )
 
-        axes_dict = dict(zip(self.available_hdus, axes.flatten()))
+        for idx, (ax, name) in enumerate(zip_longest(axes.flat, plot_hdus)):
+            if name == "aeff":
+                self.aeff.plot(ax=ax)
+                ax.set_title("Effective area")
 
-        if "aeff" in self.available_hdus:
-            self.aeff.plot(ax=axes_dict["aeff"])
-            axes_dict["aeff"].set_title("Effective area")
+            if name == "bkg":
+                bkg = self.bkg
+                if not bkg.has_offset_axis:
+                    bkg = bkg.to_2d()
+                bkg.plot(ax=ax)
+                ax.set_title("Background rate")
 
-        if "bkg" in self.available_hdus:
-            bkg = self.bkg
+            if name == "psf":
+                self.psf.plot_containment_radius_vs_energy(ax=ax)
+                ax.set_title("Point spread function")
 
-            if not bkg.has_offset_axis:
-                bkg = bkg.to_2d()
+            if name == "edisp":
+                self.edisp.plot_bias(ax=ax, add_cbar=True)
+                ax.set_title("Energy dispersion")
 
-            bkg.plot(ax=axes_dict["bkg"])
-            axes_dict["bkg"].set_title("Background rate")
-        else:
-            logging.warning(f"No background model found for obs {self.obs_id}.")
+            if name == "rad_max":
+                self.rad_max.plot_rad_max_vs_energy(ax=ax)
+                ax.set_title("Rad max")
 
-        if "psf" in self.available_hdus:
-            self.psf.plot_containment_radius_vs_energy(ax=axes_dict["psf"])
-            axes_dict["psf"].set_title("Point spread function")
-        else:
-            logging.warning(f"No PSF found for obs {self.obs_id}.")
+            if name == "events":
+                m = self.events._counts_image(allsky=False)
+                ax.remove()
+                ax = fig.add_subplot(nrows, ncols, idx + 1, projection=m.geom.wcs)
+                m.plot(ax=ax, stretch="sqrt", vmin=0, add_cbar=True)
+                ax.set_title("Events")
 
-        if "edisp" in self.available_hdus:
-            self.edisp.plot_bias(ax=axes_dict["edisp"], add_cbar=True)
-            axes_dict["edisp"].set_title("Energy dispersion")
-        else:
-            logging.warning(f"No energy dispersion found for obs {self.obs_id}.")
+            if name is None:
+                ax.set_visible(False)
 
     def select_time(self, time_interval):
         """Select a time interval of the observation.
@@ -482,6 +504,52 @@ class Observation:
                     hdul.append(irf.to_table_hdu(format="gadf-dl3"))
 
         hdul.writeto(path, overwrite=overwrite)
+
+    def copy(self, in_memory=False, **kwargs):
+        """Copy observation
+
+        Overwriting arguments requires the 'in_memory` argument to be true.
+
+        Parameters
+        ----------
+        in_memory : bool
+            Copy observation in memory.
+        **kwargs : dict
+            Keyword arguments passed to `Observation`
+
+        Examples
+        --------
+
+        .. code::
+
+            from gammapy.data import Observation
+
+            obs = Observation.read(
+                "$GAMMAPY_DATA/hess-dl3-dr1/data/hess_dl3_dr1_obs_id_020136.fits.gz"
+            )
+
+            obs_copy = obs.copy(obs_id=1234)
+            print(obs_copy)
+
+
+        Returns
+        -------
+        obs : `Observation`
+            Copied observation
+        """
+        if in_memory:
+            argnames = inspect.getfullargspec(self.__init__).args
+            argnames.remove("self")
+
+            for name in argnames:
+                value = getattr(self, name)
+                kwargs.setdefault(name, copy.deepcopy(value))
+            return self.__class__(**kwargs)
+
+        if kwargs:
+            raise ValueError("Overwriting arguments requires to set 'in_memory=True'")
+
+        return copy.deepcopy(self)
 
 
 class Observations(collections.abc.MutableSequence):

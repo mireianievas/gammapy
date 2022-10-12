@@ -2,9 +2,21 @@
 """Covariance class"""
 import numpy as np
 import scipy
+import matplotlib.pyplot as plt
 from .parameter import Parameters
 
 __all__ = ["Covariance"]
+
+
+def copy_covariance(func):
+    """Copy covariance decorator for model objects."""
+
+    def decorate(self, **kwargs):
+        result = func(self, **kwargs)
+        result.covariance = self.covariance.data.copy()
+        return result
+
+    return decorate
 
 
 class Covariance:
@@ -22,7 +34,7 @@ class Covariance:
     def __init__(self, parameters, data=None):
         self.parameters = parameters
         if data is None:
-            data = np.diag([p.error ** 2 for p in self.parameters])
+            data = np.diag([p.error**2 for p in self.parameters])
 
         self._data = np.asanyarray(data, dtype=float)
 
@@ -154,7 +166,6 @@ class Covariance:
             Axis
 
         """
-        import matplotlib.pyplot as plt
         from gammapy.visualization import annotate_heatmap, plot_heatmap
 
         npars = len(self.parameters)

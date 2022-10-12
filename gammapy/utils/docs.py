@@ -17,16 +17,13 @@ Here's some good resources with working examples:
 - https://github.com/bokeh/bokeh/tree/master/bokeh/sphinxext
 """
 import os
-from configparser import ConfigParser
 from pathlib import Path
-
 from docutils.parsers.rst import Directive
 from docutils.parsers.rst.directives import register_directive
 from docutils.parsers.rst.directives.body import CodeBlock
 from docutils.parsers.rst.directives.images import Image
 from docutils.parsers.rst.directives.misc import Include, Raw
 from sphinx.util import logging
-
 from gammapy.analysis import AnalysisConfig
 
 try:
@@ -36,13 +33,6 @@ except KeyError:
     HAS_GP_DATA = False
 
 log = logging.getLogger(__name__)
-PATH_CFG = Path(__file__).resolve().parent / ".." / ".."
-
-# fetch params from setup.cfg
-conf = ConfigParser()
-conf.read(PATH_CFG / "setup.cfg")
-build_docs_cfg = dict(conf.items("build_docs"))
-PATH_NBS = build_docs_cfg["downloadable-notebooks"]
 
 
 class AccordionHeader(Directive):
@@ -56,7 +46,8 @@ class AccordionHeader(Directive):
         raw = f"""
             <div id="accordion" class="shadow tutorial-accordion">
         <div class="card tutorial-card">
-            <div class="card-header collapsed card-link" data-toggle="collapse" data-target="#{self.options["id"]}">
+            <div class="card-header collapsed card-link" data-toggle="collapse"
+             data-target="#{self.options["id"]}">
                 <div class="d-flex flex-row tutorial-card-header-1">
                     <div class="d-flex flex-row tutorial-card-header-2">
                         <button class="btn btn-dark btn-sm"></button>
@@ -69,7 +60,7 @@ class AccordionHeader(Directive):
              <a class="reference external" href="{self.options["link"]}">Straight to tutorial…</a>
              </span>
              """
-        raw += f"""    
+        raw += f"""
 
                 </div>
             </div>
@@ -101,7 +92,7 @@ class AccordionFooter(Directive):
                     </div>
                 </div>
             </div>
-        </div>        
+        </div>
         """
         include_lines = raw.splitlines()
         c = Raw(
@@ -168,6 +159,29 @@ class DocsImage(Image):
             self.options["alt"] = self.arguments[1] if len(self.arguments) > 1 else ""
 
         return super().run()
+
+
+class SubstitutionCodeBlock(CodeBlock):
+    """
+    Similar to CodeBlock but replaces placeholders with variables.
+    """
+
+    def run(self):
+        """
+        Replace placeholders with given variables.
+        """
+        app = self.state.document.settings.env.app
+        new_content = []
+        self.content = self.content
+        existing_content = self.content
+        for item in existing_content:
+            for pair in app.config.substitutions:
+                original, replacement = pair
+                item = item.replace(original, replacement)
+            new_content.append(item)
+
+        self.content = new_content
+        return list(CodeBlock.run(self))
 
 
 def gammapy_sphinx_ext_activate():

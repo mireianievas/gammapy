@@ -1,13 +1,13 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+import pytest
 from numpy.testing import assert_allclose
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from regions import CircleSkyRegion, RectangleSkyRegion
-from gammapy.data import EventList, GTI
+from gammapy.data import GTI, EventList
 from gammapy.maps import MapAxis, WcsGeom
-from gammapy.utils.testing import mpl_plot_check, requires_data, requires_dependency
-import pytest
+from gammapy.utils.testing import mpl_plot_check, requires_data
 
 
 @requires_data()
@@ -31,15 +31,22 @@ class TestEventListBase:
         assert self.events.table.meta == read_again.table.meta
         assert (self.events.table == read_again.table).all()
 
-        dummy_events = EventList(Table())
+        table = Table()
+        table["RA"] = [1, 2, 3]
+        table["DEC"] = [3, 2, 1]
+
+        dummy_events = EventList(table.copy())
         dummy_events.write("test.fits", overwrite=True)
         read_again = EventList.read("test.fits")
-        assert read_again.table.meta['EXTNAME'] == "EVENTS"
-        assert read_again.table.meta['HDUCLASS'] == "GADF"
-        assert read_again.table.meta['HDUCLAS1'] == "EVENTS"
+
+        assert read_again.table.meta["EXTNAME"] == "EVENTS"
+        assert read_again.table.meta["HDUCLASS"] == "GADF"
+        assert read_again.table.meta["HDUCLAS1"] == "EVENTS"
 
         # With GTI
-        gti = GTI.read("$GAMMAPY_DATA/hess-dl3-dr1/data/hess_dl3_dr1_obs_id_020136.fits.gz")
+        gti = GTI.read(
+            "$GAMMAPY_DATA/hess-dl3-dr1/data/hess_dl3_dr1_obs_id_020136.fits.gz"
+        )
         self.events.write("test.fits", overwrite=True, gti=gti)
         read_again_ev = EventList.read("test.fits")
         read_again_gti = GTI.read("test.fits")
@@ -54,22 +61,24 @@ class TestEventListBase:
             self.events.write("test.fits", overwrite=True, gti=gti.table)
         # test that it won't work if format is not "gadf"
         with pytest.raises(ValueError):
-            self.events.write("test.fits", overwrite=True, format='something')
+            self.events.write("test.fits", overwrite=True, format="something")
         # test that it won't work if the basic headers are wrong
+
         with pytest.raises(ValueError):
-            dummy_events = EventList(Table())
-            dummy_events.table.meta['HDUCLAS1'] = 'response'
+            dummy_events = EventList(table.copy())
+            dummy_events.table.meta["HDUCLAS1"] = "response"
             dummy_events.write("test.fits", overwrite=True)
+
         with pytest.raises(ValueError):
-            dummy_events = EventList(Table())
-            dummy_events.table.meta['HDUCLASS'] = "ogip"
+            dummy_events = EventList(table.copy())
+            dummy_events.table.meta["HDUCLASS"] = "ogip"
             dummy_events.write("test.fits", overwrite=True)
 
         # test that it we also get the error when the only the case is wrong
         with pytest.raises(ValueError):
-            dummy_events = EventList(Table())
-            dummy_events.table.meta['HDUCLASS'] = "gadf"
-            dummy_events.table.meta['HDUCLAS1'] = "events"
+            dummy_events = EventList(table.copy())
+            dummy_events.table.meta["HDUCLASS"] = "gadf"
+            dummy_events.table.meta["HDUCLAS1"] = "events"
             dummy_events.write("test.fits", overwrite=True)
 
 
@@ -139,41 +148,35 @@ class TestEventListHESS:
         assert len(stacked_list.table) == 11243 * 2
 
     def test_stack(self):
-        other = self.events
-        self.events.stack(other)
-        assert len(self.events.table) == 11243 * 2
+        events, other = self.events.copy(), self.events.copy()
+        events.stack(other)
+        assert len(events.table) == 11243 * 2
 
     def test_offset_selection(self):
         offset_range = u.Quantity([0.5, 1.0] * u.deg)
         new_list = self.events.select_offset(offset_range)
-        assert len(new_list.table) == 1820 * 2
+        assert len(new_list.table) == 1820
 
-    @requires_dependency("matplotlib")
     def test_plot_time(self):
         with mpl_plot_check():
             self.events.plot_time()
 
-    @requires_dependency("matplotlib")
     def test_plot_energy(self):
         with mpl_plot_check():
             self.events.plot_energy()
 
-    @requires_dependency("matplotlib")
     def test_plot_offset2_distribution(self):
         with mpl_plot_check():
             self.events.plot_offset2_distribution()
 
-    @requires_dependency("matplotlib")
     def test_plot_energy_offset(self):
         with mpl_plot_check():
             self.events.plot_energy_offset()
 
-    @requires_dependency("matplotlib")
     def test_plot_image(self):
         with mpl_plot_check():
             self.events.plot_image()
 
-    @requires_dependency("matplotlib")
     def test_peek(self):
         with mpl_plot_check():
             self.events.peek()
@@ -191,7 +194,6 @@ class TestEventListFermi:
         assert len(self.events.table) == 32843
         assert not self.events.is_pointed_observation
 
-    @requires_dependency("matplotlib")
     def test_peek(self):
         with mpl_plot_check():
             self.events.peek(allsky=True)

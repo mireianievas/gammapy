@@ -27,10 +27,10 @@ Before attempting to make a contribution, you should *use* Gammapy a bit at leas
 
 We'd like to note that there are many ways to contribute to the Gammapy project.
 For example if you mention it to a colleague or suggest it to a student, or if
-you use it and `acknowledge Gammapy <https://gammapy.org/acknowledging.html>`__ 
-in a presentation, poster or publication, or if you report an issue on the mailing list, 
-those are contributions we value. The rest of this page though is concerned only with 
-the process and technical steps how to contribute a code or documentation change via a 
+you use it and `acknowledge Gammapy <https://gammapy.org/acknowledging.html>`__
+in a presentation, poster or publication, or if you report an issue on the mailing list,
+those are contributions we value. The rest of this page though is concerned only with
+the process and technical steps how to contribute a code or documentation change via a
 **pull request** against the Gammapy repository.
 
 So let's assume you've used Gammapy for a while, and now you'd like to fix or
@@ -134,9 +134,11 @@ commands to set up an environment for Gammapy development:
     git clone https://github.com/[your-github-username]/gammapy.git
     cd gammapy
     conda env create -f environment-dev.yml
+
     # To speed up the environment solving you can use mamba instead of conda
     # mamba env create -f environment-dev.yml
     conda activate gammapy-dev
+
     # for conda versions <4.4.0 you may have to execute
     # 'source activate gammapy-dev' instead
     git remote add gammapy git@github.com:gammapy/gammapy.git
@@ -149,8 +151,16 @@ It is also common to stick with the name ``origin`` for your repository and to
 use ``upstream`` for the repository you forked from. In any case, you can use
 ``$ git remote -v`` to list all your configured remotes.
 
-When developing gammapy you never want to work on the ``master`` branch, but
-always on a dedicated feature branch. 
+In case you are working with the development version environment and you want to update this
+environment with the content present in `environment-dev.yml` see below:
+
+.. code-block:: bash
+
+    $ conda env update environment-dev.yml --prune
+
+
+When developing Gammapy you never want to work on the ``master`` branch, but
+always on a dedicated feature branch.
 
 .. code-block:: bash
 
@@ -161,10 +171,10 @@ To *activate* your development version (branch) of Gammapy in your environment:
 
 .. code-block:: bash
 
-    pip install -e .
+    python -m pip install -e .
 
 This build is necessary to compile the few Cython code (``*.pyx``). If you skip
-this step, some imports depending on Cython code will fail. If you want to remove the generated 
+this step, some imports depending on Cython code will fail. If you want to remove the generated
 files run ``make clean``.
 
 For the development it is also convenient to have declared ``$GAMMAPY_DATA`` environment variable.
@@ -176,6 +186,76 @@ your ``$GAMMAPY_DATA`` to the local path you have chosen.
     # Download GAMMAPY_DATA
     gammapy download datasets --out GAMMAPY_DATA
     export GAMMAPY_DATA=$PWD/GAMMAPY_DATA
+
+We adhere to the PEP8 coding style. To enforce this, setup the 
+`pre-commit hook <https://pre-commit.com/>`_:
+
+.. code-block:: bash
+
+    pre-commit install
+
+
+Running tests & building Documentation
+======================================
+To run tests and build documentation we use tool `tox <https://tox.wiki/en/latest/>`__.
+It is a virtual environment management tool which allows you to test Gammapy locally
+in mutltiple test environments with different versions of Python and our dependencies.
+It is also used to build the documentation and check the codestyle in a specific environment.
+The same setup based on `tox` is used in our CI build.
+
+Once you have created and activated the `gammapy-dev` environment, made some modification
+to the code, you should run the tests:
+
+.. code-block:: bash
+
+    tox -e test
+
+This will execute the tests in the standard `test`` environment. If you would like
+to test with a different environment you can use:
+
+.. code-block:: bash
+
+    tox -e py310-test-numpy121
+
+Which will test the code with Python 3.10 and numpy 1.21. All available pre-defined
+environments can be listed using:
+
+.. code-block:: bash
+
+    tox --listenvs
+
+However for most contributions testing with the standard `tox -e test` command is sufficient.
+Additional arguments for `pytest` can be passed after `--`:
+
+.. code-block:: bash
+
+    tox -e test -- -n auto
+
+Of course you can always use `pytest <https://docs.pytest.org/en/7.1.x/>`__ directly to 
+run tests, e.g. to run tests in a specific sub-package:
+
+.. code-block:: bash
+
+    pytest gammapy/maps
+
+To build the documentation locally you can use:
+
+.. code-block:: bash
+
+    tox -e build_docs
+
+And use `make docs-show` to open a browser and preview the result.
+
+The codestyle can be checked using the command:
+
+.. code-block:: bash
+
+    tox -e codestyle
+
+Which will run the tool `flak8` to check for code style issues.
+
+
+
 
 ..
     * run tests

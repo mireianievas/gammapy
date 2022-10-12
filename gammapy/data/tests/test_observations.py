@@ -1,20 +1,19 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import pytest
-import logging
 import numpy as np
 from numpy.testing import assert_allclose
 import astropy.units as u
-from astropy.coordinates import SkyCoord, EarthLocation
+from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 from astropy.units import Quantity
 from gammapy.data import DataStore, Observation
-from gammapy.irf import load_cta_irfs
+from gammapy.irf import PSF3D, load_cta_irfs
+from gammapy.utils.fits import HDULocation
 from gammapy.utils.testing import (
     assert_skycoord_allclose,
     assert_time_allclose,
     mpl_plot_check,
     requires_data,
-    requires_dependency,
 )
 
 
@@ -41,32 +40,22 @@ def test_observation(data_store):
     assert_skycoord_allclose(obs.target_radec, c)
 
 
-@requires_dependency("matplotlib")
 @requires_data()
-def test_observation_peek(data_store, caplog):
-    with caplog.at_level(logging.WARNING):
-        obs = Observation.read(
-            "$GAMMAPY_DATA/hess-dl3-dr1/data/hess_dl3_dr1_obs_id_023523.fits.gz"
-        )
-    
-        with mpl_plot_check():
-            obs.peek()
-    
-        obs.bkg = None
-    
-        with mpl_plot_check():
-            obs.peek()
-    
-        message = "No background model found for obs 23523."
-        assert message in [record.message for record in caplog.records]
+def test_observation_peek(data_store):
 
-        obs.psf = None
-        with mpl_plot_check():
-            obs.peek()
-    
-        assert "WARNING" in [record.levelname for record in caplog.records]
-        message = "No PSF found for obs 23523."
-        assert message in [record.message for record in caplog.records]
+    obs = Observation.read(
+        "$GAMMAPY_DATA/hess-dl3-dr1/data/hess_dl3_dr1_obs_id_023523.fits.gz"
+    )
+
+    with mpl_plot_check():
+        obs.peek()
+
+    obs_with_radmax = Observation.read(
+        "$GAMMAPY_DATA/magic/rad_max/data/20131004_05029747_DL3_CrabNebula-W0.40+035.fits"
+    )
+
+    with mpl_plot_check():
+        obs_with_radmax.peek()
 
 
 @requires_data()
@@ -234,12 +223,14 @@ def test_observation_cta_1dc():
         "$GAMMAPY_DATA/cta-1dc/caldb/data/cta/1dc/bcf/South_z20_50h/irf_file.fits"
     )
 
-    t_ref = Time('2020-01-01T00:00:00')
+    t_ref = Time("2020-01-01T00:00:00")
     tstart = 20 * u.hour
     location = EarthLocation(lon="-70d18m58.84s", lat="-24d41m0.34s", height="2000m")
 
     obs = Observation.create(
-        pointing, irfs=irfs, deadtime_fraction=0.1,
+        pointing,
+        irfs=irfs,
+        deadtime_fraction=0.1,
         tstart=tstart,
         tstop=tstart + ontime,
         reference_time=t_ref,
@@ -251,6 +242,30 @@ def test_observation_cta_1dc():
     assert_allclose(obs.target_radec.ra, np.nan)
     assert not np.isnan(obs.pointing_zen)
     assert_allclose(obs.muoneff, 1)
+
+
+@requires_data()
+def test_observation_create_radmax():
+    pointing = SkyCoord(0, 0, unit="deg", frame="galactic")
+    obs = Observation.read("$GAMMAPY_DATA/joint-crab/dl3/magic/run_05029748_DL3.fits")
+    livetime = 5.0 * u.hr
+    deadtime = 0.5
+
+    irfs = {}
+    for _ in obs.available_irfs:
+        irfs[_] = getattr(obs, _)
+
+    obs1 = Observation.create(
+        pointing,
+        irfs=irfs,
+        deadtime_fraction=deadtime,
+        livetime=livetime,
+    )
+
+    assert_skycoord_allclose(obs1.pointing_radec, pointing.icrs)
+    assert_allclose(obs1.observation_live_time_duration, 0.5 * livetime)
+    assert obs1.rad_max is not None
+    assert obs1.psf is None
 
 
 @requires_data()
@@ -267,7 +282,7 @@ def test_observation_read():
 
     assert obs.obs_id == 20136
     assert len(obs.events.energy) == 11243
-    assert obs.available_hdus == ["events","gti", "aeff", "edisp", "psf", "bkg"]
+    assert obs.available_hdus == ["events", "gti", "aeff", "edisp", "psf", "bkg"]
     assert_allclose(val.value, 278000.54120855, rtol=1e-5)
     assert val.unit == "m2"
 
@@ -285,7 +300,7 @@ def test_observation_read_single_file():
 
     assert obs.obs_id == 20136
     assert len(obs.events.energy) == 11243
-    assert obs.available_hdus == ["events","gti", "aeff", "edisp", "psf", "bkg"]
+    assert obs.available_hdus == ["events", "gti", "aeff", "edisp", "psf", "bkg"]
     assert_allclose(val.value, 273372.44851054, rtol=1e-5)
     assert val.unit == "m2"
 
@@ -294,9 +309,7 @@ def test_observation_read_single_file():
 def test_observation_read_single_file_fixed_rad_max():
     """check that for a point-like observation without the RAD_MAX_2D table
     a RadMax2D object is generated from the RAD_MAX keyword"""
-    obs = Observation.read(
-        "$GAMMAPY_DATA/joint-crab/dl3/magic/run_05029748_DL3.fits"
-    )
+    obs = Observation.read("$GAMMAPY_DATA/joint-crab/dl3/magic/run_05029748_DL3.fits")
 
     assert obs.rad_max is not None
     assert obs.rad_max.quantity.shape == (1, 1)
@@ -325,7 +338,6 @@ class TestObservationChecker:
         assert records[5]["msg"] == "Loading aeff failed"
         assert records[7]["msg"] == "Loading edisp failed"
         assert records[9]["msg"] == "Loading psf failed"
-
 
 
 @requires_data()
@@ -358,3 +370,19 @@ def test_observation_write(tmp_path):
     assert obs_read.edisp is None
     assert obs_read.bkg is None
     assert obs_read.rad_max is None
+
+
+@requires_data()
+def test_obervation_copy(data_store):
+    obs = data_store.obs(23523)
+
+    obs_copy = obs.copy()
+    assert obs_copy.obs_id == 23523
+    assert isinstance(obs_copy.__dict__["_psf_hdu"], HDULocation)
+
+    with pytest.raises(ValueError):
+        _ = obs.copy(obs_id=1234)
+
+    obs_copy = obs.copy(obs_id=1234, in_memory=True)
+    assert isinstance(obs_copy.__dict__["psf"], PSF3D)
+    assert obs_copy.obs_id == 1234
