@@ -6,10 +6,19 @@ import astropy.units as u
 from astropy.convolution import Box2DKernel, Gaussian2DKernel
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from astropy.time import Time
 from regions import CircleSkyRegion, PointSkyRegion, RectangleSkyRegion
 from gammapy.datasets.map import MapEvaluator
 from gammapy.irf import PSFKernel, PSFMap
-from gammapy.maps import Map, MapAxis, MapCoord, WcsGeom, WcsNDMap
+from gammapy.maps import (
+    LabelMapAxis,
+    Map,
+    MapAxis,
+    MapCoord,
+    TimeMapAxis,
+    WcsGeom,
+    WcsNDMap,
+)
 from gammapy.modeling.models import (
     GaussianSpatialModel,
     PowerLawSpectralModel,
@@ -84,6 +93,22 @@ def test_wcsndmap_read_write(tmp_path, npix, binsz, frame, proj, skydir, axes):
     m1 = WcsNDMap.read(path)
     m2 = Map.read(path)
     m3 = Map.read(path, map_type="wcs")
+
+
+@pytest.mark.parametrize(
+    ("npix", "binsz", "frame", "proj", "skydir", "axes"), wcs_test_geoms
+)
+def test_wcsndmap_write_checksum(tmp_path, npix, binsz, frame, proj, skydir, axes):
+    geom = WcsGeom.create(npix=npix, binsz=binsz, proj=proj, frame=frame, axes=axes)
+    path = tmp_path / "tmp.fits"
+
+    m0 = WcsNDMap(geom)
+    m0.write(path, overwrite=True, checksum=True)
+
+    hdul = fits.open(path)
+    for hdu in hdul:
+        assert "CHECKSUM" in hdu.header
+        assert "DATASUM" in hdu.header
 
 
 def test_wcsndmap_read_write_fgst(tmp_path):
@@ -417,6 +442,45 @@ def test_wcsndmap_upsample(npix, binsz, frame, proj, skydir, axes):
     assert m.unit == m2.unit
 
 
+@pytest.mark.parametrize(
+    ("npix", "binsz", "frame", "proj", "skydir", "axes"), wcs_test_geoms
+)
+def test_wcsmap_upsample_downsample_wcs(npix, binsz, frame, proj, skydir, axes):
+    geom = WcsGeom.create(npix=npix, binsz=binsz, proj=proj, frame=frame)
+    if geom.is_regular:
+        m = WcsNDMap(geom, unit="m2")
+        pix_scale = np.max(geom.pixel_scales.to_value("deg"))
+
+        factor = 11
+        # alignment check fails for larger odd value due to precision error on the position
+        # seems ok for even values
+        m_up = m.upsample(factor, preserve_counts=True)
+        m_down = m_up.downsample(factor, preserve_counts=True)
+        m.stack(m_down)
+
+        assert_allclose(m.geom.center_skydir.l, m_down.geom.center_skydir.l, atol=1e-10)
+        assert_allclose(m.geom.center_skydir.b, m_down.geom.center_skydir.b, atol=1e-10)
+        assert_allclose(m.geom.data_shape, m_down.geom.data_shape)
+        assert m.geom.is_aligned(m_down.geom)
+
+        mcut = m.cutout(m.geom.center_skydir, 2 * pix_scale)
+        assert m.geom.is_aligned(mcut.geom)
+
+        factor = 49
+        mcut_up = mcut.upsample(factor, preserve_counts=True)
+        mcut_down = mcut_up.downsample(factor, preserve_counts=True)
+        m.stack(mcut_down)
+
+        assert_allclose(
+            m.geom.center_skydir.l, mcut_down.geom.center_skydir.l, atol=1e-10
+        )
+        assert_allclose(
+            m.geom.center_skydir.b, mcut_down.geom.center_skydir.b, atol=1e-10
+        )
+        assert_allclose(mcut.geom.data_shape, mcut_down.geom.data_shape)
+        assert m.geom.is_aligned(mcut_down.geom)
+
+
 def test_wcsndmap_upsample_axis():
     axis = MapAxis.from_edges([1, 2, 3, 4], name="test")
     geom = WcsGeom.create(npix=(2, 2), axes=[axis])
@@ -517,6 +581,10 @@ def test_make_cutout(mode):
     assert_allclose(actual, 36.0)
     assert_allclose(cutout.geom.shape_axes, m.geom.shape_axes)
     assert_allclose(cutout.geom.width.to_value("deg"), [[2.0], [3.0]])
+    assert_allclose(cutout.geom.data_shape, (3, 2, 3, 2))
+
+    cutout = m.cutout(position=pos, width=(2.0, 3.0) * u.deg, mode=mode, min_npix=3)
+    assert_allclose(cutout.geom.data_shape, (3, 2, 3, 3))
 
 
 def test_convolve_vs_smooth():
@@ -608,6 +676,28 @@ def test_plot():
 def test_plot_grid():
     axis = MapAxis([0, 1, 2], node_type="edges")
     m = WcsNDMap.create(binsz=0.1 * u.deg, width=1 * u.deg, axes=[axis])
+    with mpl_plot_check():
+        m.plot_grid()
+
+
+def test_plot_grid_label_axis():
+    axis = LabelMapAxis(labels=["d1", "d2"], name="dataset")
+
+    m = WcsNDMap.create(width="5 deg", axes=[axis])
+
+    with mpl_plot_check():
+        m.plot_grid()
+
+
+def test_plot_grid_time_axis():
+    time_axis = TimeMapAxis(
+        edges_min=[1, 10] * u.day,
+        edges_max=[2, 13] * u.day,
+        reference_time=Time("2020-03-19"),
+    )
+
+    m = WcsNDMap.create(width="5 deg", axes=[time_axis])
+
     with mpl_plot_check():
         m.plot_grid()
 
@@ -889,3 +979,92 @@ def test_double_cutout():
     m_new.stack(m_cc)
     m_c_new = m_new.cutout(position=position, width="2 deg")
     np.testing.assert_allclose(m_c_new.data, m_cc.data)
+
+
+def test_to_region_nd_map_histogram_basic():
+    random_state = np.random.RandomState(seed=0)
+
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=3)
+
+    data = Map.create(axes=[energy_axis], width=10, unit="cm2 s-1", binsz=0.02)
+    data.data = random_state.normal(
+        size=data.data.shape, loc=0, scale=np.array([1.0, 2.0, 3.0]).reshape((-1, 1, 1))
+    )
+
+    hist = data.to_region_nd_map_histogram()
+    assert hist.data.shape == (3, 100, 1, 1)
+    assert hist.unit == ""
+    assert hist.geom.axes[0].name == "bins"
+    assert_allclose(hist.data[:, 50, 0, 0], [29019, 14625, 9794])
+
+    hist = data.to_region_nd_map_histogram(density=True, nbin=50)
+    assert hist.data.shape == (3, 50, 1, 1)
+    assert hist.unit == 1 / (u.cm**2 / u.s)
+    assert hist.geom.axes[0].name == "bins"
+    assert_allclose(hist.data[:, 25, 0, 0], [0.378215, 0.196005, 0.131782], atol=1e-5)
+
+
+def test_to_region_nd_map_histogram_advanced():
+    random_state = np.random.RandomState(seed=0)
+
+    energy_axis = MapAxis.from_energy_bounds("1 TeV", "10 TeV", nbin=3)
+    label_axis = LabelMapAxis(["a", "b"], name="label")
+
+    data = Map.create(axes=[energy_axis, label_axis], width=10, binsz=0.02)
+
+    data.data = random_state.normal(
+        size=data.data.shape,
+        loc=0,
+        scale=np.array([[1.0, 2.0, 3.0]]).reshape((-1, 1, 1)),
+    )
+
+    region = CircleSkyRegion(center=SkyCoord(0, 0, unit="deg"), radius=3 * u.deg)
+
+    bins_axis = MapAxis.from_edges([-2, -1, 0, 1, 2], name="my-bins")
+    hist = data.to_region_nd_map_histogram(region=region, bins_axis=bins_axis)
+
+    assert hist.data.shape == (2, 3, 4, 1, 1)
+    assert hist.unit == ""
+    assert hist.geom.axes[0].name == "my-bins"
+    assert_allclose(
+        hist.data[:, :, 2, 0, 0], [[24189, 13587, 9212], [24053, 13410, 9186]]
+    )
+
+
+def test_plot_mask():
+    axis = MapAxis.from_energy_bounds("0.1 TeV", "10 TeV", nbin=2)
+    geom = WcsGeom.create(
+        binsz=0.02,
+        width=(2, 2),
+        frame="icrs",
+        axes=[axis],
+    )
+
+    mask = Map.from_geom(geom=geom, dtype=bool)
+    mask.data[1] |= True
+
+    with mpl_plot_check():
+        mask.plot_grid()
+
+
+def test_histogram_center_value():
+    evt_energy = np.arange(100.0, 105, 0.5) * u.GeV
+    N_evt = evt_energy.shape[0]
+    center = SkyCoord(0, 0, unit="deg", frame="icrs")
+    radec = SkyCoord(
+        [center.ra] * N_evt, [center.dec] * N_evt, unit="deg"
+    )  # fake position list
+    energy_axis = MapAxis.from_edges(np.arange(100, 106, 1) * u.GeV, name="energy")
+    map1 = WcsNDMap.create(
+        skydir=center, binsz=0.1 * u.deg, width=0.1 * u.deg, axes=[energy_axis]
+    )
+    map1.fill_by_coord({"skycoord": radec, "energy": evt_energy})
+    assert_allclose(map1.data[0:2], [[[2.0]], [[2.0]]])
+
+    map1 = WcsNDMap.create(
+        skydir=center,
+        binsz=1 * u.deg,
+        width=3 * u.deg,
+    )
+    map1.fill_by_pix([[0.0, 0.5, 1.0, 1.5], [0.0, 0.5, 1.0, 1.5]])
+    assert_allclose(map1.data, [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 1.0]])

@@ -20,7 +20,7 @@ Context
 -------
 
 As already explained in the :doc:`/tutorials/analysis-1d/spectral_analysis`
-tutorial, the background is estimated fromthe field of view of the observation.
+tutorial, the background is estimated from the field of view of the observation.
 In particular, the source and background events are counted within a circular 
 ON region enclosing the source. The background to be subtracted is then estimated
 from one or more OFF regions with an expected background rate similar to the one
@@ -41,21 +41,21 @@ provided.
 The directional cut is typically an angular distance from the assumed
 source position, :math:`\\theta`. The
 `gamma-astro-data-format <https://gamma-astro-data-formats.readthedocs.io/en/latest/>`__
-specifications offer two different ways to store this information: \* if
-the same :math:`\\theta` cut is applied at all energies and offsets, `a
-`RAD_MAX`
-keyword <https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/point_like/#rad-max>`__
-is added to the header of the data units containing IRF components. This
-should be used to define the size of the ON and OFF regions; \* in case
-an energy- (and offset-) dependent :math:`\theta` cut is applied, its
-values are stored in additional `FITS` data unit, named
-``RAD_MAX_2D` <https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/point_like/#rad-max-2d>`__.
+specifications offer two different ways to store this information:
+
+* if the same :math:`\\theta` cut is applied at all energies and offsets, a
+  `RAD_MAX <https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/point_like/#rad-max>`__
+  keyword is added to the header of the data units containing IRF components. This
+  should be used to define the size of the ON and OFF regions;
+* in case an energy-dependent (and offset-dependent) :math:`\\theta` cut is applied, its
+  values are stored in additional `FITS` data unit, named
+  `RAD_MAX_2D <https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/point_like/#rad-max-2d>`__.
 
 `Gammapy` provides a class to automatically read these values,
 `~gammapy.irf.RadMax2D`, for both cases (fixed or energy-dependent
-:math:`\theta` cut). In this notebook we will focus on how to perform a
+:math:`\\theta` cut). In this notebook we will focus on how to perform a
 spectral extraction with a point-like IRF with an energy-dependent
-:math:`\theta` cut. We remark that in this case a
+:math:`\\theta` cut. We remark that in this case a
 `~regions.PointSkyRegion` (and not a `~regions.CircleSkyRegion`)
 should be used to define the ON region. If a geometry based on a
 `~regions.PointSkyRegion` is fed to the spectra and the background
@@ -76,14 +76,14 @@ Introduction
 
 We load two MAGIC observations in the
 `gammapy-data <https://github.com/gammapy/gammapy-data>`__ containing
-IRF component with a :math:`\theta` cut.
+IRF component with a :math:`\\theta` cut.
 
 We define the ON region, this time as a `~regions.PointSkyRegion` instead of a
 `CircleSkyRegion`, i.e. we specify only the center of our ON region.
 We create a `RegionGeom` adding to the region the estimated energy
 axis of the `~gammapy.datasets.SpectrumDataset` object we want to
 produce. The corresponding dataset maker will automatically use the
-:math:`\theta` values in `~gammapy.irf.RadMax2D` to set the
+:math:`\\theta` values in `~gammapy.irf.RadMax2D` to set the
 appropriate ON region sizes (based on the offset on the observation and
 on the estimated energy binning).
 
@@ -100,19 +100,20 @@ a 1D likelihood fit, exactly as illustrated in the previous example.
 
 """
 
-######################################################################
-# Setup
-# -----
-#
-# As usual, we’ll start with some setup …
-#
-
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from regions import PointSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+
+######################################################################
+# Setup
+# -----
+#
+# As usual, we’ll start with some setup …
+#
+from IPython.display import display
 from gammapy.data import DataStore
 from gammapy.datasets import Datasets, SpectrumDataset
 from gammapy.makers import (
@@ -165,7 +166,9 @@ print(rad_max)
 # We can also plot the rad max value against the energy:
 #
 
-rad_max.plot_rad_max_vs_energy()
+fig, ax = plt.subplots()
+rad_max.plot_rad_max_vs_energy(ax=ax)
+plt.show()
 
 
 ######################################################################
@@ -173,7 +176,7 @@ rad_max.plot_rad_max_vs_energy()
 # --------------------
 #
 # To use the `RAD_MAX_2D` values to define the sizes of the ON and OFF
-# regions **it is necessary to specify the ON region as
+# regions it is necessary to specify the ON region as
 # a `~regions.PointSkyRegion`:
 #
 
@@ -218,7 +221,7 @@ dataset_maker = SpectrumDatasetMaker(
     containment_correction=False, selection=["counts", "exposure", "edisp"]
 )
 
-# tell the background maker to use the WobbleRegionsFinder, let us use 1 off
+# tell the background maker to use the WobbleRegionsFinder, let us use 3 off
 region_finder = WobbleRegionsFinder(n_off_regions=3)
 bkg_maker = ReflectedRegionsBackgroundMaker(region_finder=region_finder)
 
@@ -242,13 +245,14 @@ for observation in observations:
 
 
 ######################################################################
-# No we can plot the off regions and target positions on top of the counts
+# Now we can plot the off regions and target positions on top of the counts
 # map:
 #
 
-ax = counts.plot()
+ax = counts.plot(cmap="viridis")
 geom.plot_region(ax=ax, kwargs_point={"color": "k", "marker": "*"})
 plot_spectrum_datasets_off_regions(ax=ax, datasets=datasets)
+plt.show()
 
 
 ######################################################################
@@ -300,21 +304,21 @@ print(result)
 # and check the best-fit parameters
 #
 
-datasets.models.to_parameters_table()
+display(datasets.models.to_parameters_table())
 
 
 ######################################################################
 # A simple way to inspect the model residuals is using the function
 # `~SpectrumDataset.plot_fit()`
 #
-
 ax_spectrum, ax_residuals = datasets[0].plot_fit()
 ax_spectrum.set_ylim(0.1, 120)
+plt.show()
 
 
 ######################################################################
 # For more ways of assessing fit quality, please refer to the dedicated
-# `modeling and fitting tutorial :doc:`/tutorials/api/fitting` tutorial.
+# :doc:`/tutorials/api/fitting` tutorial.
 #
 
 
@@ -326,12 +330,13 @@ ax_spectrum.set_ylim(0.1, 120)
 # by
 # MAGIC <https://ui.adsabs.harvard.edu/abs/2015JHEAp...5...30A/abstract>`__.
 #
-
+fig, ax = plt.subplots()
 plot_kwargs = {
     "energy_bounds": [0.08, 20] * u.TeV,
     "sed_type": "e2dnde",
     "yunits": u.Unit("TeV cm-2 s-1"),
     "xunits": u.GeV,
+    "ax": ax,
 }
 
 crab_magic_lp = create_crab_spectral_model("magic_lp")
@@ -342,5 +347,36 @@ best_fit_model.spectral_model.plot(
 best_fit_model.spectral_model.plot_error(facecolor="crimson", alpha=0.4, **plot_kwargs)
 crab_magic_lp.plot(ls="--", lw=1.5, color="k", label="MAGIC reference", **plot_kwargs)
 
-plt.legend()
-plt.ylim([1e-13, 1e-10])
+ax.legend()
+ax.set_ylim([1e-13, 1e-10])
+plt.show()
+
+
+######################################################################
+# Dataset simulations
+# -------------------
+#
+# A common way to check if a fit is biased is to simulate multiple datasets with
+# the obtained best fit model, and check the distribution of the fitted parameters.
+# Here, we show how to perform one such simulation assuming the measured off counts
+# provide a good distribution of the background.
+#
+
+dataset_simulated = datasets.stack_reduce().copy(name="simulated_ds")
+simulated_model = best_fit_model.copy(name="simulated")
+dataset_simulated.models = simulated_model
+dataset_simulated.fake(
+    npred_background=dataset_simulated.counts_off * dataset_simulated.alpha
+)
+dataset_simulated.peek()
+plt.show()
+
+# The important thing to note here is that while this samples the on-counts, the off counts are
+# not sampled. If you have multiple measurements of the off counts, they should be used.
+# Alternatively, you can try to create a parametric model of the background.
+
+result = fit.run(datasets=[dataset_simulated])
+print(result.models.to_parameters_table())
+
+
+# sphinx_gallery_thumbnail_number = 4

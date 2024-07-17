@@ -18,7 +18,7 @@ Please give feedback and suggest additions to this page!
 
 
 .. accordion-header::
-    :id: collapseHowToOne
+    :id: HowToGammapy
     :title: Spell and pronounce Gammapy
 
 The recommended spelling is "Gammapy" as proper name. The recommended
@@ -28,9 +28,9 @@ the english word "pie". You can listen to it `here <http://ipa-reader.xyz/?text=
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToTwo
+    :id: HowToObs
     :title: Select observations
-    :link: ../tutorials/starting/analysis_2.html#Defining-the-datastore-and-selecting-observations
+    :link: ../tutorials/starting/analysis_2.html#defining-the-datastore-and-selecting-observations
 
 The `~gammapy.data.DataStore` provides access to a summary table of all observations available.
 It can be used to select observations with various criterion. You can for instance apply a cone search
@@ -38,21 +38,11 @@ or also select observations based on other information available using the `~gam
 
 .. accordion-footer::
 
-.. accordion-header::
-    :id: collapseHowToThree
-    :title: Make an on-axis equivalent livetime map
-    :link: ../tutorials/data/hess.html#On-axis-equivalent-livetime
-
-The `~gammapy.data.DataStore` provides access to a summary table of all observations available.
-It can be used to select observations with various criterion. You can for instance apply a cone search
-or also select observations based on other information available using the `~gammapy.data.ObservationTable.select_observations` method.
-
-.. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToFour
-    :title: Check IRFs
-    :link: ../tutorials/data/cta.html#IRFs
+    :id: HowToObsMap
+    :title: Make observation duration maps
+    :link: ../tutorials/api/makers.html#observation-duration-and-effective-livetime
 
 Gammapy offers a number of methods to explore the content of the various IRFs
 contained in an observation. This is usually done thanks to their ``peek()``
@@ -61,7 +51,42 @@ methods.
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToFive
+    :id: HowToGroupObs
+    :title: Group observations
+    :link: ../tutorials/api/observation_clustering.html
+
+`~gammapy.data.Observations` can be grouped depending on a number of various quantities.
+The two methods to do so are manual grouping and hierarchical clustering. The quantity
+you group by can be adjusted according to each science case.
+
+.. accordion-footer::
+
+
+.. accordion-header::
+    :id: HowToLivetimeMap
+    :title: Make an on-axis equivalent livetime map
+    :link: ../tutorials/data/hess.html#on-axis-equivalent-livetime
+
+The `~gammapy.data.DataStore` provides access to a summary table of all observations available.
+It can be used to obtain various quantities from your `~gammapy.data.Observations` list, such as livetime.
+The on-axis equivalent number of observation hours on the source can be calculated.
+
+.. accordion-footer::
+
+
+.. accordion-header::
+    :id: HowToEnergyEdges
+    :title: Compute minimum number of counts of significance per bin
+    :link: ../tutorials/analysis-1d/spectral_analysis.html#compute-flux-points
+
+The `~gammapy.estimators.utils.resample_energy_edges` provides a way to resample the energy bins
+t o satisfy a minimum number of counts of significance per bin.
+
+.. accordion-footer::
+
+
+.. accordion-header::
+    :id: HowToPlottingUnits
     :title: Choose units for plotting
 
 Units for plotting are handled with a combination of `matplotlib` and `astropy.units`.
@@ -85,7 +110,7 @@ you to define the x and y axis units using `astropy.units`. Here is a minimal ex
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToSix
+    :id: HowToSrcSig
     :title: Compute source significance
 
 Estimate the significance of a source, or more generally of an additional model
@@ -101,10 +126,23 @@ take the difference. Note that in Gammapy, the fit statistic is defined as ``S =
 
 .. accordion-footer::
 
+
 .. accordion-header::
-    :id: collapseHowToSeven
+    :id: HowToReduceData
+    :title: Perform data reduction loop with multi-processing
+    :link: ../tutorials/api/makers.html#data-reduction-loop
+
+There are two ways for the data reduction steps to be implemented. Either a loop is used to
+run the full reduction chain, or the reduction is performed with multi-processing tools by
+utilising the `~gammapy.makers.DatasetsMaker` to perform the loop internally.
+
+.. accordion-footer::
+
+
+.. accordion-header::
+    :id: HowToSrcCumSig
     :title: Compute cumulative significance
-    :link: ../tutorials/analysis/1D/spectral_analysis.html#Source-statistic
+    :link: ../tutorials/analysis-1d/spectral_analysis.html#source-statistic
 
 A classical plot in gamma-ray astronomy is the cumulative significance of a
 source as a function of observing time. In Gammapy, you can produce it with 1D
@@ -115,18 +153,18 @@ access the total statistics with the ``info_table(cumulative=True)`` method of
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToEight
+    :id: HowToCustomModel
     :title: Implement a custom model
-    :link: ../tutorials/api/models.html#Implementing-a-Custom-Model
+    :link: ../tutorials/api/models.html#implementing-a-custom-model
 
 Gammapy allows the flexibility of using user-defined models for analysis.
 
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToNine
-    :title: Energy dependent spatial models
-    :link: ../tutorials/api/models.html#Models-with-energy-dependent-morphology
+    :id: HowToEDepSpatialModel
+    :title: Implement energy dependent spatial models
+    :link: ../tutorials/api/models.html#models-with-energy-dependent-morphology
 
 While Gammapy does not ship energy dependent spatial models, it is possible to define
 such models within the modeling framework.
@@ -134,8 +172,8 @@ such models within the modeling framework.
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToTen
-    :title: How to model astrophysical source spectra
+    :id: HowToElevenAstroSrcSpectra
+    :title: Model astrophysical source spectra
 
 It is possible to combine Gammapy with astrophysical modeling codes, if they
 provide a Python interface. Usually this requires some glue code to be written,
@@ -147,9 +185,9 @@ H.E.S.S. or Fermi-LAT data).
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseSHowToEleven
-    :title: How to model temporal profiles
-    :link: ../tutorials/analysis/time/light_curve_simulation.html#Fitting-temporal-models
+    :id: HowToTempProfile
+    :title: Model temporal profiles
+    :link: ../tutorials/analysis-time/light_curve_simulation.html#fitting-temporal-models
 
 Temporal models can be directly fit on available lightcurves,
 or on the reduced datasets. This is done through a joint fitting of the datasets,
@@ -158,7 +196,29 @@ one for each time bin.
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToTwelve
+    :id: HowToFitConvergence
+    :title: Improve fit convergence with constraints on the source position
+
+It happens that a 3D fit does not converge with warning messages indicating that the
+scanned positions of the model are outside the valid IRF map range. The type of warning message is:
+::
+
+    Position <SkyCoord (ICRS): (ra, dec) in deg
+      (329.71693826, -33.18392464)> is outside valid IRF map range, using nearest IRF defined within
+
+This issue might happen when the position of a model has no defined range. The minimizer
+might scan positions outside the spatial range in which the IRFs are computed and then it gets lost.
+
+The simple solution is to add a physically-motivated range on the model's position, e.g. within
+the field of view or around an excess position. Most of the time, this tip solves the issue.
+The documentation of the
+`models sub-package <https://docs.gammapy.org/1.0/tutorials/api/models.html#modifying-model-parameters>`_
+explains how to add a validity range of a model parameter.
+
+.. accordion-footer::
+
+.. accordion-header::
+    :id: HowToReduceMemory
     :title: Reduce memory budget for large datasets
 
 When dealing with surveys and large sky regions, the amount of memory required might become
@@ -177,7 +237,7 @@ by removing it from the list of options passed to the `~gammapy.makers.MapDatase
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToThirteen
+    :id: HowToCopyDataStore
     :title: Copy part of a data store
 
 To share specific data from a database, it might be necessary to create a new data storage with
@@ -189,16 +249,16 @@ and build the associated observation and HDU tables.
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToFourteen
+    :id: HowToInterpolateGeom
     :title: Interpolate onto a different geometry
-    :link: ../tutorials/api/maps.html#Filling-maps-from-interpolation
+    :link: ../tutorials/api/maps.html#filling-maps-from-interpolation
 
 To interpolate maps onto a different geometry use `~gammapy.maps.Map.interp_to_geom`.
 
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToFifteen
+    :id: HowToSuppressWarn
     :title: Suppress warnings
 
 In general it is not recommended to suppress warnings from code because they
@@ -219,8 +279,8 @@ warning like so:
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToSixteen
-    :title: Displaying a progress bar
+    :id: HowToProgressBar
+    :title: Display a progress bar
 
 Gammapy provides the possibility of displaying a
 progress bar to monitor the advancement of time-consuming processes. To activate this
@@ -232,11 +292,25 @@ to your code:
     from gammapy.utils import pbar
     pbar.SHOW_PROGRESS_BAR = True
 
+The progress bar is available within the following:
+
+* `~gammapy.analysis.Analysis.get_datasets` method
+
+* `~gammapy.data.DataStore.get_observations` method
+
+* The ``run()`` method from the ``estimator`` classes: `~gammapy.estimators.ASmoothMapEstimator`, `~gammapy.estimators.TSMapEstimator`, `~gammapy.estimators.LightCurveEstimator`
+
+* `~gammapy.modeling.Fit.stat_profile` and `~gammapy.modeling.Fit.stat_surface` methods
+
+* `~gammapy.scripts.download.progress_download` method
+
+* `~gammapy.utils.parallel.run_multiprocessing` method
+
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToSeventeen
-    :title: Changing plotting style and color-blind friendly visualizations
+    :id: HowToChangePlotStyle
+    :title: Change plotting style and color-blind friendly visualizations
 
 As the Gammapy visualisations are using the library `matplotlib` that provides color styles, it is possible to change the
 default colors map of the Gammapy plots. Using using the
@@ -250,8 +324,8 @@ should add into your notebooks or scripts the following lines after the Gammapy 
     # with XXXX from `print(plt.style.available)`
 
 Note that you can create your own style with matplotlib (see
-`here <https://matplotlib.org/stable/tutorials/introductory/customizing.html>`_ and
-`here <https://matplotlib.org/stable/tutorials/colors/colormaps.html>`_)
+`here <https://matplotlib.org/stable/tutorials/introductory/customizing.html>`__ and
+`here <https://matplotlib.org/stable/tutorials/colors/colormaps.html>`__)
 
 The CTA observatory released a document describing best practices for **data visualisation in a way friendly to
 color-blind people**:
@@ -273,17 +347,19 @@ or
 .. accordion-footer::
 
 .. accordion-header::
-    :id: collapseHowToEighteen
+    :id: HowToAddPhase
     :title: Add PHASE information to your data
 
-For doing pulsar analysis, you must compute the phase associated
-to each event and then create a new `EventList` and a new `Observation`.
-Modifying the `EventList` of an `Observation` in-place is prohibited because of the
-underlying lazy loading implemented in reading observations.
-Code for computing phases is NOT provided within gammapy,
-and you must use an external s/w like PINT or TEMPO2. For brevity,
-this code example shows the only technical implementation
-using a dummy phase column.
+To do a pulsar analysis, one must compute the pulsar phase of
+each event and put this new information in a new `~gammapy.data.Observation`.
+Computing pulsar phases can be done using an external library such as
+[PINT](https://nanograv-pint.readthedocs.io/en/latest/) or
+[Tempo2](https://www.pulsarastronomy.net/pulsar/software/tempo2). A
+[Gammapy Recipe](https://gammapy.github.io/gammapy-recipes/_build/html/index.html)
+showing how to use PINT within the Gammapy framework is available
+[here](https://gammapy.github.io/gammapy-recipes/_build/html/notebooks/pulsar_phase/pulsar_phase_computation.html).
+For brevity, the code below shows how to add a dummy phase column to a new
+`~gammapy.data.EventList` and `~gammapy.data.Observation`.
 
 .. testcode::
 
@@ -300,13 +376,14 @@ using a dummy phase column.
     # create a new `EventList`
     table = obs.events.table
     table["PHASE"] = phase
-    events_new = EventList(table)
+    new_events = EventList(table)
 
     # copy the observation in memory, changing the events
-    o2 = obs.copy(events=events_new, in_memory=True)
+    obs2 = obs.copy(events=new_events, in_memory=True)
 
     # The new observation and the new events table can be serialised independently
-    o2.write("new_obs.fits.gz")
-    events_new.write("events.fits.gz", gti=obs.gti, overwrite=True)
+    obs2.write("new_obs.fits.gz")
+    obs2.write("events.fits.gz", include_irfs=False)
 
 .. accordion-footer::
+

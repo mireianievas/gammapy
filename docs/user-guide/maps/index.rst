@@ -42,25 +42,6 @@ map objects, more details are given in the :doc:`/tutorials/api/maps`
 tutorial.
 
 
-.. _node_types:
-
-Differential and integral maps
-------------------------------
-
-`gammapy.maps` supports both differential and integral maps, representing
-differential values at specific coordinates, or integral values within bins.
-This is achieved by specifying the ``node_type`` of a `~gammapy.maps.MapAxis`. Quantities
-defined at bin centers should have a node_type of "center", and quantities
-integrated in bins should have node_type of ``edges``. Interpolation is defined
-only for differential quantities.
-
-For the specific case of the energy axis, conventionally, true energies are have
-node_type "center" (usually used for IRFs and exposure) whereas the
-reconstructed energy axis has node_type "edges" (usually used for counts and
-background). Model evaluations are first computed on differential bins, and then
-multiplied by the bin volumes to finally return integrated maps, so the output
-predicted counts maps are integral with node_type "edges".
-
 
 Accessor methods
 ----------------
@@ -83,7 +64,7 @@ methods are provided:
 
 Accessor methods accept as their first argument a coordinate tuple containing
 scalars, lists, or numpy arrays with one tuple element for each dimension of the
-map. ``coord`` methods optionally support a `dict` or `~MapCoord` argument.
+map. ``coord`` methods optionally support a `dict` or `~gammapy.maps.MapCoord` argument.
 
 When using tuple input the first two elements in the tuple should be longitude
 and latitude followed by one element for each non-spatial dimension. Map
@@ -98,7 +79,7 @@ coordinates can be expressed in one of three coordinate systems:
   and passed to the corresponding ``idx`` method.
 * ``coord`` : The true map coordinates including angles on the sky (longitude
   and latitude).  This coordinate system supports three coordinate
-  representations: `tuple`, `dict`, and `~MapCoord`.  The tuple representation
+  representations: `tuple`, `dict`, and `~gammapy.maps.MapCoord`.  The tuple representation
   should contain longitude and latitude in degrees followed by one coordinate
   array for each non-spatial dimension.
 
@@ -160,7 +141,7 @@ following demonstrates how one can set pixel values:
 Interface with MapCoord and SkyCoord
 ------------------------------------
 
-The ``coord`` accessor methods accept `dict`, `~MapCoord`, and
+The ``coord`` accessor methods accept `dict`, `~gammapy.maps.MapCoord`, and
 `~astropy.coordinates.SkyCoord` arguments in addition to the standard `tuple` of
 `~numpy.ndarray` argument.  When using a `tuple` argument a
 `~astropy.coordinates.SkyCoord` can be used instead of longitude and latitude
@@ -185,7 +166,7 @@ transformed to match the coordinate system of the map.
     m.set_by_coord((skycoord, energy), [0.5, 1.5])
     m.get_by_coord((skycoord, energy))
 
-A `~MapCoord` or `dict` argument can be used to interact with a map object
+A `~gammapy.maps.MapCoord` or `dict` argument can be used to interact with a map object
 without reference to the axis ordering of the map geometry:
 
 .. testcode::
@@ -205,10 +186,10 @@ spatial axes must always be named ``lon`` and ``lat``.
 MapCoord
 --------
 
-`MapCoord` is an N-dimensional coordinate object that stores both spatial and
-non-spatial coordinates and is accepted by all ``coord`` methods. A `~MapCoord`
+`~gammapy.maps.MapCoord` is an N-dimensional coordinate object that stores both spatial and
+non-spatial coordinates and is accepted by all ``coord`` methods. A `~gammapy.maps.MapCoord`
 can be created with or without explicitly named axes with `MapCoord.create`.
-Axes of a `MapCoord` can be accessed by index, name, or attribute.  A `MapCoord`
+Axes of a `~gammapy.maps.MapCoord` can be accessed by index, name, or attribute.  A `~gammapy.maps.MapCoord`
 without explicit axis names can be created by calling `MapCoord.create` with a
 `tuple` argument:
 
@@ -247,10 +228,11 @@ without explicit axis names can be created by calling `MapCoord.create` with a
 
 The first two elements of the tuple argument must contain longitude and
 latitude.  Non-spatial axes are assigned a default name ``axis{I}`` where
-``{I}`` is the index of the non-spatial dimension. `MapCoord` objects created
+``{I}`` is the index of the non-spatial dimension. `~gammapy.maps.MapCoord` objects created
 without named axes must have the same axis ordering as the map geometry.
 
-A `MapCoord` with named axes can be created by calling `MapCoord.create` with a `dict`:
+A `~gammapy.maps.MapCoord` with named axes can be created by calling `MapCoord.create`
+with a `dict`:
 
 .. testcode::
 
@@ -283,10 +265,29 @@ A `MapCoord` with named axes can be created by calling `MapCoord.create` with a 
     [ 100 1000] [ 100 1000]
 
 
-Spatial axes must be named ``lon`` and ``lat``. `MapCoord` objects created with
+Spatial axes must be named ``lon`` and ``lat``. `~gammapy.maps.MapCoord` objects created with
 named axes do not need to have the same axis ordering as the map geometry.
 However the name of the axis must match the name of the corresponding map
 geometry axis.
+
+Note: it is possible to have an arbitrary number of additional non-spatial dimensions,
+however, the user must ensure that the array has been correctly broadcasted.
+
+.. testcode::
+
+    energy = np.array([1000, 3000, 5000])[:, np.newaxis, np.newaxis]
+    energy_true = np.arange(500, 6000, 500)[np.newaxis, :, np.newaxis]
+    print(energy.shape)
+    print(energy_true.shape)
+    c = MapCoord.create(dict(skycoord=skycoord, energy=energy, energy_true=energy_true))
+    print(c.shape)
+
+.. testoutput::
+    :hide:
+
+    (3, 1, 1)
+    (1, 11, 1)
+    (3, 11, 2)
 
 
 Using gammapy.maps

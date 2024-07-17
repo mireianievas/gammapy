@@ -5,8 +5,48 @@ Release notes
 =============
 
 This is the list of changes to Gammapy between each release. For full details,
-see the `commit logs <https://github.com/gammapy/gammapy/commits/master>`_.
+see the `commit logs <https://github.com/gammapy/gammapy/commits/main>`_.
 A complete list of Gammapy contributors is at https://gammapy.org/team.html
+
+Version 1.2
+-----------
+
+.. toctree::
+   :maxdepth: 2
+
+   v1.2
+
+Version 1.1
+-----------
+
+.. toctree::
+   :maxdepth: 2
+
+   v1.1
+
+Version 1.0.2
+-------------
+
+.. toctree::
+   :maxdepth: 2
+
+   v1.0.2
+
+Version 1.0.1
+-------------
+
+.. toctree::
+   :maxdepth: 2
+
+   v1.0.1
+
+Version 1.0
+-----------
+
+.. toctree::
+   :maxdepth: 2
+
+   v1.0
 
 Version 0.20.1
 --------------

@@ -21,7 +21,7 @@ from gammapy.makers import (
     SpectrumDatasetMaker,
     WobbleRegionsFinder,
 )
-from gammapy.maps import MapAxis, RegionGeom, WcsGeom
+from gammapy.maps import Map, MapAxis, RegionGeom, WcsGeom
 from gammapy.utils.regions import compound_region_to_regions
 from gammapy.utils.testing import assert_quantity_allclose, requires_data
 
@@ -454,5 +454,26 @@ def test_reflected_bkg_maker_fixed_rad_max_bad(
     dataset_empty = SpectrumDataset.create(geom=geom_point_shape)
 
     dataset = maker.run(dataset_empty, obs)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         reflected_bkg_maker.run(dataset, obs)
+
+
+def test_reflected_bkg_exclsion_error(exclusion_mask):
+
+    energy = MapAxis.from_energy_bounds(1 * u.TeV, 2 * u.TeV, nbin=1, name="energy")
+
+    exclusion_cube = exclusion_mask.to_cube([energy])
+    ReflectedRegionsBackgroundMaker(exclusion_mask=exclusion_cube)
+
+    energy = MapAxis.from_energy_bounds(2 * u.TeV, 3 * u.TeV, nbin=1, name="energy")
+    exclusion_cube_2 = exclusion_mask.to_cube([energy])
+
+    exclusion_stack = Map.from_stack([exclusion_cube, exclusion_cube_2])
+
+    with pytest.raises(ValueError):
+        ReflectedRegionsBackgroundMaker(exclusion_mask=exclusion_stack)
+
+    exclusion_mask.data = exclusion_mask.data.astype("int")
+
+    with pytest.raises(ValueError):
+        ReflectedRegionsBackgroundMaker(exclusion_mask=exclusion_mask)

@@ -7,7 +7,7 @@ Source modelling and fitting in stacked observations using the high level interf
 Prerequisites
 -------------
 
--  To understand how a generel modelling and fiiting works in gammapy,
+-  To understand how a general modelling and fitting works in gammapy,
    please refer to the :doc:`/tutorials/analysis-3d/analysis_3d` tutorial.
 
 Context
@@ -36,6 +36,9 @@ an integrated power law.
 
 """
 
+# %matplotlib inline
+import astropy.units as u
+import matplotlib.pyplot as plt
 
 ######################################################################
 # Setup
@@ -43,15 +46,8 @@ an integrated power law.
 #
 # As usual, we’ll start with some general imports…
 #
-
-import logging
-
-# %matplotlib inline
-import astropy.units as u
+from IPython.display import display
 from gammapy.analysis import Analysis, AnalysisConfig
-
-log = logging.getLogger(__name__)
-
 
 ######################################################################
 # Check setup
@@ -79,7 +75,7 @@ config.observations.obs_ids = [110380, 111140, 111159]
 
 ######################################################################
 # Technically, gammapy implements 2D analysis as a special case of 3D
-# analysis (one one bin in energy). So, we must specify the type of
+# analysis (one bin in energy). So, we must specify the type of
 # analysis as *3D*, and define the geometry of the analysis.
 #
 
@@ -95,7 +91,7 @@ config.datasets.geom.wcs.binsize = "0.02 deg"
 # The FoV radius to use for cutouts
 config.datasets.geom.selection.offset_max = 2.5 * u.deg
 config.datasets.safe_mask.methods = ["offset-max"]
-config.datasets.safe_mask.parameters = {"offset_max": 2.5 * u.deg}
+config.datasets.safe_mask.parameters = {"offset_max": "2.5 deg"}
 config.datasets.background.method = "fov_background"
 config.fit.fit_range = {"min": "0.1 TeV", "max": "30.0 TeV"}
 
@@ -104,7 +100,7 @@ config.datasets.geom.axes.energy.min = "0.1 TeV"
 config.datasets.geom.axes.energy.max = "10 TeV"
 config.datasets.geom.axes.energy.nbins = 1
 
-config.datasets.geom.wcs.binsize_irf = 0.2 * u.deg
+config.datasets.geom.wcs.binsize_irf = "0.2 deg"
 
 print(config)
 
@@ -135,18 +131,19 @@ print(analysis.datasets["stacked"])
 # about them presently.
 #
 
-analysis.datasets["stacked"].counts
+print(analysis.datasets["stacked"].counts)
 
-analysis.datasets["stacked"].background
+print(analysis.datasets["stacked"].background)
 
-analysis.datasets["stacked"].exposure
+print(analysis.datasets["stacked"].exposure)
 
 
 ######################################################################
 # We can have a quick look of these maps in the following way:
 #
 
-analysis.datasets["stacked"].counts.reduce_over_axes().plot(vmax=5)
+analysis.datasets["stacked"].counts.reduce_over_axes().plot(vmax=10, add_cbar=True)
+plt.show()
 
 
 ######################################################################
@@ -206,4 +203,4 @@ analysis.datasets["stacked"].background_model.parameters["tilt"].frozen = True
 analysis.run_fit()
 
 # To see the best fit values along with the errors
-analysis.models.to_parameters_table()
+display(analysis.models.to_parameters_table())

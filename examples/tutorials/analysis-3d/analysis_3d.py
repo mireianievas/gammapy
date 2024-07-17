@@ -4,7 +4,7 @@
 
 Perform detailed 3D stacked and joint analysis.
 
-This tutorial does a 3D map based analsis on the galactic center, using
+This tutorial does a 3D map based analysis on the galactic center, using
 simulated observations from the CTA-1DC. We will use the high level
 interface for the data reduction, and then do a detailed modelling. This
 will be done in two different ways:
@@ -23,8 +23,8 @@ from regions import CircleSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.analysis import Analysis, AnalysisConfig
-from gammapy.datasets import MapDataset
 from gammapy.estimators import ExcessMapEstimator
 from gammapy.modeling import Fit
 from gammapy.modeling.models import (
@@ -39,6 +39,7 @@ from gammapy.modeling.models import (
 # Check setup
 # -----------
 from gammapy.utils.check import check_tutorials_setup
+from gammapy.visualization import plot_distribution
 
 check_tutorials_setup()
 
@@ -93,7 +94,7 @@ print(config)
 # Configuration for stacked and joint analysis
 # --------------------------------------------
 #
-# This is done just by specfiying the flag on `config.datasets.stack`.
+# This is done just by specifying the flag on `config.datasets.stack`.
 # Since the internal machinery will work differently for the two cases, we
 # will write it as two config files and save it to disc in YAML format for
 # future reference.
@@ -137,28 +138,47 @@ analysis_stacked.get_datasets()
 
 
 ######################################################################
-# We have one final dataset, which you can print and explore
+# We have one final dataset, which we can print and explore
 #
 
 dataset_stacked = analysis_stacked.datasets["stacked"]
 print(dataset_stacked)
 
+######################################################################
 # To plot a smooth counts map
+#
+
 dataset_stacked.counts.smooth(0.02 * u.deg).plot_interactive(add_cbar=True)
+plt.show()
 
+######################################################################
 # And the background map
+#
+
 dataset_stacked.background.plot_interactive(add_cbar=True)
+plt.show()
 
+######################################################################
 # We can quickly check the PSF
+#
+
 dataset_stacked.psf.peek()
+plt.show()
 
+######################################################################
 # And the energy dispersion in the center of the map
-dataset_stacked.edisp.peek()
+#
 
+dataset_stacked.edisp.peek()
+plt.show()
+
+######################################################################
 # You can also get an excess image with a few lines of code:
+#
+
 excess = dataset_stacked.excess.sum_over_axes()
 excess.smooth("0.06 deg").plot(stretch="sqrt", add_cbar=True)
-
+plt.show()
 
 ######################################################################
 # Modeling and fitting
@@ -181,7 +201,7 @@ excess.smooth("0.06 deg").plot(stretch="sqrt", add_cbar=True)
 # can rely on the `~gammapy.maps.Geom.energy_mask()` method.
 #
 # For more details on masks and the techniques to create them in gammapy,
-# please checkou the dedicated :doc:`/tutorials/api/mask_maps` tutorial.
+# please checkout the dedicated :doc:`/tutorials/api/mask_maps` tutorial.
 #
 
 dataset_stacked.mask_fit = dataset_stacked.counts.geom.energy_mask(
@@ -233,7 +253,7 @@ print(result)
 # Check best-fit parameters and error estimates:
 #
 
-models_stacked.to_parameters_table()
+display(models_stacked.to_parameters_table())
 
 
 ######################################################################
@@ -243,8 +263,8 @@ models_stacked.to_parameters_table()
 # and `method=diff`, which corresponds to a simple `data - model`
 # plot):
 #
-
 dataset_stacked.plot_residuals_spatial(method="diff/sqrt(model)", vmin=-1, vmax=1)
+plt.show()
 
 
 ######################################################################
@@ -253,11 +273,11 @@ dataset_stacked.plot_residuals_spatial(method="diff/sqrt(model)", vmin=-1, vmax=
 #
 
 region = CircleSkyRegion(spatial_model.position, radius=0.15 * u.deg)
-
 dataset_stacked.plot_residuals(
     kwargs_spatial=dict(method="diff/sqrt(model)", vmin=-1, vmax=1),
     kwargs_spectral=dict(region=region),
 )
+plt.show()
 
 
 ######################################################################
@@ -278,42 +298,34 @@ estimator = ExcessMapEstimator(
 )
 
 result = estimator.run(dataset_stacked)
-
 result["sqrt_ts"].plot_grid(
     figsize=(12, 4), cmap="coolwarm", add_cbar=True, vmin=-5, vmax=5, ncols=2
 )
+plt.show()
 
 
 ######################################################################
 # Distribution of residuals significance in the full map geometry:
 #
+significance_map = result["sqrt_ts"]
 
-# TODO: clean this up
-significance_data = result["sqrt_ts"].data
+kwargs_hist = {"density": True, "alpha": 0.9, "color": "red", "bins": 40}
 
-# #Remove bins that are inside an exclusion region, that would create an artificial peak at significance=0.
-# #For now these lines are useless, because to_image() drops the mask fit
-# mask_data = dataset_image.mask_fit.sum_over_axes().data
-# excluded = mask_data == 0
-# significance_data = significance_data[~excluded]
-selection = np.isfinite(significance_data) & ~(significance_data == 0)
-significance_data = significance_data[selection]
-
-plt.hist(significance_data, density=True, alpha=0.9, color="red", bins=40)
-mu, std = norm.fit(significance_data)
-
-x = np.linspace(-5, 5, 100)
-p = norm.pdf(x, mu, std)
-
-plt.plot(
-    x,
-    p,
-    lw=2,
-    color="black",
-    label=r"$\mu$ = {:.2f}, $\sigma$ = {:.2f}".format(mu, std),
+ax, res = plot_distribution(
+    significance_map,
+    func="norm",
+    kwargs_hist=kwargs_hist,
+    kwargs_axes={"xlim": (-5, 5)},
 )
-plt.legend(fontsize=17)
-plt.xlim(-5, 5)
+
+plt.show()
+
+
+######################################################################
+# Here we could also plot the number of predicted counts for each model and
+# for the background in our dataset by using the
+# `~gammapy.visualization.plot_npred_signal` function.
+#
 
 
 ######################################################################
@@ -345,7 +357,11 @@ analysis_joint.get_datasets()
 # You can see there are 3 datasets now
 print(analysis_joint.datasets)
 
+
+######################################################################
 # You can access each one by name or by index, eg:
+#
+
 print(analysis_joint.datasets[0])
 
 
@@ -356,7 +372,7 @@ print(analysis_joint.datasets[0])
 # map, omit the region argument.
 #
 
-analysis_joint.datasets.info_table()
+display(analysis_joint.datasets.info_table())
 
 models_joint = Models()
 
@@ -402,26 +418,13 @@ print(models_joint)
 # Look at the residuals for each dataset separately. In this case, we can
 # directly refer to the section
 # `Fit quality and model residuals for a MapDataset` in this notebook -
-# Look at a stacked residual map.
+# Or, look at a stacked residual map.
 #
 
-
-######################################################################
-# In the latter case, we need to properly stack the joint dataset before
-# computing the residuals:
-#
-
-# TODO: clean this up
-
-# We need to stack on the full geometry, so we use to geom from the stacked counts map.
-stacked = MapDataset.from_geoms(**dataset_stacked.geoms)
-
-for dataset in analysis_joint.datasets:
-    # TODO: Apply mask_fit before stacking
-    stacked.stack(dataset)
-
+stacked = analysis_joint.datasets.stack_reduce()
 stacked.models = [model_joint]
 
+plt.figure()
 stacked.plot_residuals_spatial(vmin=-1, vmax=1)
 
 
@@ -438,16 +441,20 @@ stacked.plot_residuals_spatial(vmin=-1, vmax=1)
 #
 
 
-def plot_spectrum(model, result, label, color):
+def plot_spectrum(model, ax, label, color):
     spec = model.spectral_model
     energy_bounds = [0.3, 10] * u.TeV
-    spec.plot(energy_bounds=energy_bounds, energy_power=2, label=label, color=color)
-    spec.plot_error(energy_bounds=energy_bounds, energy_power=2, color=color)
+    spec.plot(
+        ax=ax, energy_bounds=energy_bounds, energy_power=2, label=label, color=color
+    )
+    spec.plot_error(ax=ax, energy_bounds=energy_bounds, energy_power=2, color=color)
 
 
-plot_spectrum(model, result, label="stacked", color="tab:blue")
-plot_spectrum(model_joint, result_joint, label="joint", color="tab:orange")
-plt.legend()
+fig, ax = plt.subplots()
+plot_spectrum(model, ax=ax, label="stacked", color="tab:blue")
+plot_spectrum(model_joint, ax=ax, label="joint", color="tab:orange")
+ax.legend()
+plt.show()
 
 
 ######################################################################

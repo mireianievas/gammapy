@@ -9,8 +9,8 @@ Prerequisites
 -------------
 
 -  Knowledge of spectral extraction and datasets used in gammapy, see
-   for instance the `spectral analysis
-   tutorial <spectral_analysis.ipynb>`__
+   for instance the :doc:`spectral analysis
+   tutorial </tutorials/analysis-1d/spectral_analysis>`
 
 Context
 -------
@@ -37,20 +37,14 @@ distribution of fitted parameters is consistent with the input values.**
 Proposed approach
 -----------------
 
-We will use the following classes:
+We will use the following classes and functions:
 
 -  `~gammapy.datasets.SpectrumDatasetOnOff`
 -  `~gammapy.datasets.SpectrumDataset`
--  `~gammapy.irf.load_cta_irfs`
+-  `~gammapy.irf.load_irf_dict_from_file`
 -  `~gammapy.modeling.models.PowerLawSpectralModel`
 
 """
-
-
-######################################################################
-# Setup
-# -----
-#
 
 import numpy as np
 import astropy.units as u
@@ -59,9 +53,15 @@ from regions import CircleSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
-from gammapy.data import Observation, observatory_locations
+
+######################################################################
+# Setup
+# -----
+#
+from IPython.display import display
+from gammapy.data import FixedPointingInfo, Observation, observatory_locations
 from gammapy.datasets import Datasets, SpectrumDataset, SpectrumDatasetOnOff
-from gammapy.irf import load_cta_irfs
+from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import SpectrumDatasetMaker
 from gammapy.maps import MapAxis, RegionGeom
 from gammapy.modeling import Fit
@@ -83,14 +83,19 @@ check_tutorials_setup()
 # the livetime, the offset, the assumed integration radius, the energy
 # range to perform the simulation for and the choice of spectral model. We
 # then use an in-memory observation which is convolved with the IRFs to
-# get the predicted number of counts. This is Poission fluctuated using
+# get the predicted number of counts. This is Poisson fluctuated using
 # the `fake()` to get the simulated counts for each observation.
 #
 
 # Define simulation parameters parameters
 livetime = 1 * u.h
 
-pointing = SkyCoord(0, 0, unit="deg", frame="galactic")
+pointing_position = SkyCoord(0, 0, unit="deg", frame="galactic")
+# We want to simulate an observation pointing at a fixed position in the sky.
+# For this, we use the `FixedPointingInfo` class
+pointing = FixedPointingInfo(
+    fixed_icrs=pointing_position.icrs,
+)
 offset = 0.5 * u.deg
 
 # Reconstructed and true energy axis
@@ -103,7 +108,9 @@ energy_axis_true = MapAxis.from_edges(
 
 on_region_radius = Angle("0.11 deg")
 
-center = pointing.directional_offset_by(position_angle=0 * u.deg, separation=offset)
+center = pointing_position.directional_offset_by(
+    position_angle=0 * u.deg, separation=offset
+)
 on_region = CircleSkyRegion(center=center, radius=on_region_radius)
 
 # Define spectral model - a simple Power Law in this case
@@ -116,9 +123,10 @@ print(model_simu)
 # we set the sky model used in the dataset
 model = SkyModel(spectral_model=model_simu, name="source")
 
+######################################################################
 # Load the IRFs
-# In this simulation, we use the CTA-1DC irfs shipped with gammapy.
-irfs = load_cta_irfs(
+# In this simulation, we use the CTA-1DC IRFs shipped with Gammapy.
+irfs = load_irf_dict_from_file(
     "$GAMMAPY_DATA/cta-1dc/caldb/data/cta/1dc/bcf/South_z20_50h/irf_file.fits"
 )
 
@@ -130,6 +138,10 @@ obs = Observation.create(
     location=location,
 )
 print(obs)
+
+######################################################################
+# Simulate a spectra
+#
 
 # Make the SpectrumDataset
 geom = RegionGeom.create(region=on_region, axes=[energy_axis])
@@ -158,7 +170,9 @@ print(dataset)
 #
 # To do an on off spectral analysis, which is the usual science case, the
 # standard would be to use `SpectrumDatasetOnOff`, which uses the
-# acceptance to fake off-counts
+# acceptance to fake off-counts. Please also refer to the `Dataset simulations`
+# section in the :doc:`/tutorials/analysis-1d/spectral_analysis_rad_max` tutorial,
+# dealing with simulations based on observations of real off counts.
 #
 
 dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
@@ -185,7 +199,7 @@ for idx in range(n_obs):
     datasets.append(dataset_fake)
 
 table = datasets.info_table()
-table
+display(table)
 
 
 ######################################################################
@@ -200,6 +214,7 @@ axes[1].hist(table["counts_off"])
 axes[1].set_xlabel("Counts Off")
 axes[2].hist(table["excess"])
 axes[2].set_xlabel("excess")
+plt.show()
 
 
 ######################################################################
@@ -227,10 +242,13 @@ for dataset in datasets:
 # very well with the spectrum that we initially injected.
 #
 
+fig, ax = plt.subplots()
 index = np.array([_["index"] for _ in results])
-plt.hist(index, bins=10, alpha=0.5)
-plt.axvline(x=model_simu.parameters["index"].value, color="red")
+ax.hist(index, bins=10, alpha=0.5)
+ax.axvline(x=model_simu.parameters["index"].value, color="red")
+ax.set_xlabel("Reconstructed spectral index")
 print(f"index: {index.mean()} += {index.std()}")
+plt.show()
 
 
 ######################################################################

@@ -10,18 +10,16 @@ Prerequisites
 -  Understanding of spectral analysis techniques in classical Cherenkov
    astronomy.
 -  Understanding the basic data reduction and modeling/fitting processes
-   with the gammapy library API as shown in the `first gammapy analysis
-   with the gammapy library API
-   tutorial :doc:`/tutorials/starting/analysis_2`
+   with the gammapy library API as shown in the tutorial :doc:`/tutorials/starting/analysis_2`
 
 Context
 -------
 
 Many VHE sources in the Galaxy are extended. Studying them with a 1D
 spectral analysis is more complex than studying point sources. One often
-has to use complex (i.e. non circular) regions and more importantly, one
-has to take into account the fact that the instrument response is non
-uniform over the selectred region. A typical example is given by the
+has to use complex (i.e. non-circular) regions and more importantly, one
+has to take into account the fact that the instrument response is non-uniform
+over the selected region. A typical example is given by the
 supernova remnant RX J1713-3935 which is nearly 1 degree in diameter.
 See the `following
 article <https://ui.adsabs.harvard.edu/abs/2018A%26A...612A...6H/abstract>`__.
@@ -38,7 +36,7 @@ tutorial) that Gammapy uses specific
 datasets makers to first produce reduced spectral data and then to
 extract OFF measurements with reflected background techniques: the
 `~gammapy.makers.SpectrumDatasetMaker` and the
-`~gammapy.makers.ReflectedRegionsBackgroundMaker`. However if the flag
+`~gammapy.makers.ReflectedRegionsBackgroundMaker`. However, if the flag
 `use_region_center` is not set to `False`, the former simply
 computes the reduced IRFs at the center of the ON region (assumed to be
 circular).
@@ -49,12 +47,12 @@ average responses in the ON region, we can set
 `~gammapy.makers.SpectrumDatasetMaker`, in which case the values of
 the IRFs are averaged over the entire region.
 
-In summary we have to:
+In summary, we have to:
 
 -  Define an ON region (a `~regions.SkyRegion`) fully enclosing the
    source we want to study.
 -  Define a `~gammapy.maps.RegionGeom` with the ON region and the
-   required energy range (beware in particular, the true energy range).
+   required energy range (in particular, beware of the true energy range).
 -  Create the necessary makers :
 
    -  the spectrum dataset maker :
@@ -92,6 +90,7 @@ from regions import CircleSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.data import DataStore
 from gammapy.datasets import Datasets, SpectrumDataset
 from gammapy.makers import (
@@ -151,12 +150,13 @@ on_region = CircleSkyRegion(target_position, radius)
 # Define the geometries
 # ~~~~~~~~~~~~~~~~~~~~~
 #
-# This part is especially important. - We have to define first energy
-# axes. They define the axes of the resulting
-# `~gammapy.datasets.SpectrumDatasetOnOff`. In particular, we have to be
-# careful to the true energy axis: it has to cover a larger range than the
-# reconstructed energy one. - Then we define the region geometry itself
-# from the on region.
+# This part is especially important.
+#
+# -  We have to define first energy axes. They define the axes of the resulting
+#    `~gammapy.datasets.SpectrumDatasetOnOff`. In particular, we have to be
+#    careful to the true energy axis: it has to cover a larger range than the
+#    reconstructed energy one.
+# -  Then we define the region geometry itself from the on region.
 #
 
 # The binning of the final spectrum is defined here.
@@ -213,12 +213,12 @@ safe_mask_maker = SafeMaskMaker(methods=["aeff-max"], aeff_percent=10)
 # Perform the data reduction loop.
 # --------------------------------
 #
-# We can now run over selected observations. For each of them, we: -
-# create the `~gammapy.datasets.SpectrumDataset` - Compute the OFF via
-# the reflected background method and create a
-# `~gammapy.datasets.SpectrumDatasetOnOff` object - Run the safe mask
-# maker on it - Add the `~gammapy.datasets.SpectrumDatasetOnOff` to the
-# list.
+# We can now run over selected observations. For each of them, we:
+#
+# -   Create the `~gammapy.datasets.SpectrumDataset`
+# -  Compute the OFF via the reflected background method and create a `~gammapy.datasets.SpectrumDatasetOnOff` object
+# -  Run the safe mask maker on it
+# -  Add the `~gammapy.datasets.SpectrumDatasetOnOff` to the list.
 #
 
 # %%time
@@ -237,7 +237,7 @@ for obs in observations:
     # Append dataset to the list
     datasets.append(dataset)
 
-datasets.meta_table
+display(datasets.meta_table)
 
 
 ######################################################################
@@ -248,11 +248,12 @@ datasets.meta_table
 #
 
 datasets[0].peek()
+plt.show()
 
 
 ######################################################################
-# Cumulative excess and signficance
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Cumulative excess and significance
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 # Finally, we can look at cumulative significance and number of excesses.
 # This is done with the `info_table` method of
@@ -261,30 +262,33 @@ datasets[0].peek()
 
 info_table = datasets.info_table(cumulative=True)
 
-info_table
+display(info_table)
 
-fig = plt.figure(figsize=(10, 6))
-ax = fig.add_subplot(121)
-ax.plot(
+######################################################################
+# And make the corresponding plots
+
+fig, (ax_excess, ax_sqrt_ts) = plt.subplots(figsize=(10, 4), ncols=2, nrows=1)
+ax_excess.plot(
     info_table["livetime"].to("h"),
     info_table["excess"],
     marker="o",
     ls="none",
 )
+ax_excess.set_title("Excess")
+ax_excess.set_xlabel("Livetime [h]")
+ax_excess.set_ylabel("Excess events")
 
-plt.xlabel("Livetime [h]")
-plt.ylabel("Excess events")
-
-ax = fig.add_subplot(122)
-ax.plot(
+ax_sqrt_ts.plot(
     info_table["livetime"].to("h"),
     info_table["sqrt_ts"],
     marker="o",
     ls="none",
 )
 
-plt.xlabel("Livetime [h]")
-plt.ylabel("Sqrt(TS)")
+ax_sqrt_ts.set_title("Sqrt(TS)")
+ax_sqrt_ts.set_xlabel("Livetime [h]")
+ax_sqrt_ts.set_ylabel("Sqrt(TS)")
+plt.show()
 
 
 ######################################################################
@@ -321,7 +325,7 @@ print(result_joint)
 # First the fitted parameters values and their errors.
 #
 
-datasets.models.to_parameters_table()
+display(datasets.models.to_parameters_table())
 
 
 ######################################################################
@@ -332,9 +336,11 @@ datasets.models.to_parameters_table()
 
 # First stack them all
 reduced = datasets.stack_reduce()
+
 # Assign the fitted model
 reduced.models = model
-# Plot the result
 
+# Plot the result
 ax_spectrum, ax_residuals = reduced.plot_fit()
 reduced.plot_masks(ax=ax_spectrum)
+plt.show()

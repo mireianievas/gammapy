@@ -10,8 +10,8 @@ Prerequisites
 -  Understanding the gammapy data workflow, in particular what are DL3
    events and instrument response functions (IRF).
 -  Understanding of the data reduction and modeling fitting process as
-   shown in the `analysis with the high level interface
-   tutorial <analysis_1.ipynb>`__
+   shown in the analysis with the high level interface
+   tutorial :doc:`/tutorials/starting/analysis_1`
 
 Context
 -------
@@ -36,11 +36,11 @@ object that reduce an observation to a dataset.
 
 We can then proceed with data reduction with a loop over all selected
 observations to produce datasets in the relevant geometry and stack them
-together (i.e. sum them all).
+together (i.e.sum them all).
 
 In practice, we have to:
 
-- Create a `~gammapy.data.DataStore` poiting to the relevant data
+- Create a `~gammapy.data.DataStore` pointing to the relevant data
 - Apply an observation selection to produce a list of observations,
   a `~gammapy.data.Observations` object.
 - Define a geometry of the Map we want to produce, with a sky projection
@@ -78,6 +78,7 @@ from regions import CircleSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.data import DataStore
 from gammapy.datasets import MapDataset
 from gammapy.estimators import FluxPointsEstimator
@@ -91,6 +92,7 @@ from gammapy.modeling.models import (
     SkyModel,
 )
 from gammapy.utils.check import check_tutorials_setup
+from gammapy.visualization import plot_npred_signal
 
 ######################################################################
 # Check setup
@@ -182,7 +184,9 @@ stacked = MapDataset.create(
 #
 # The `~gammapy.makers.MapDatasetMaker` object is initialized as well as
 # the `~gammapy.makers.SafeMaskMaker` that carries here a maximum offset
-# selection.
+# selection. The `~gammapy.makers.FoVBackgroundMaker` utilised here has the
+# default ``spectral_model`` but it is possible to set your own. For further
+# details see the :doc:`FoV background </user-guide/makers/fov>`.
 #
 
 offset_max = 2.5 * u.deg
@@ -206,7 +210,7 @@ maker_fov = FoVBackgroundMaker(method="fit", exclusion_mask=exclusion_mask)
 for obs in observations:
     # First a cutout of the target map is produced
     cutout = stacked.cutout(
-        obs.pointing_radec, width=2 * offset_max, name=f"obs-{obs.obs_id}"
+        obs.get_pointing_icrs(obs.tmid), width=2 * offset_max, name=f"obs-{obs.obs_id}"
     )
     # A MapDataset is filled in this cutout geometry
     dataset = maker.run(cutout, obs)
@@ -229,6 +233,7 @@ print(stacked)
 #
 
 stacked.counts.sum_over_axes().smooth(0.05 * u.deg).plot(stretch="sqrt", add_cbar=True)
+plt.show()
 
 
 ######################################################################
@@ -319,6 +324,16 @@ print(stacked.models.to_parameters_table())
 
 
 ######################################################################
+# Here we can plot the number of predicted counts for each model and
+# for the background in our dataset. In order to do this, we can use
+# the `~gammapy.visualization.plot_npred_signal` function.
+#
+
+plot_npred_signal(stacked)
+plt.show()
+
+
+######################################################################
 # Inspecting residuals
 # ~~~~~~~~~~~~~~~~~~~~
 #
@@ -329,6 +344,7 @@ print(stacked.models.to_parameters_table())
 #
 
 stacked.plot_residuals_spatial(method="diff/sqrt(model)", vmin=-0.5, vmax=0.5)
+plt.show()
 
 
 ######################################################################
@@ -342,6 +358,7 @@ stacked.plot_residuals(
     kwargs_spatial=dict(method="diff/sqrt(model)", vmin=-0.5, vmax=0.5),
     kwargs_spectral=dict(region=region),
 )
+plt.show()
 
 
 ######################################################################
@@ -353,7 +370,7 @@ residuals = stacked.residuals(method="diff")
 residuals.smooth("0.08 deg").plot_interactive(
     cmap="coolwarm", vmin=-0.2, vmax=0.2, stretch="linear", add_cbar=True
 )
-
+plt.show()
 
 ######################################################################
 # Plot the fitted spectrum
@@ -380,6 +397,7 @@ spec = sky_model.spectral_model
 energy_bounds = [1, 10] * u.TeV
 spec.plot(energy_bounds=energy_bounds, energy_power=2)
 ax = spec.plot_error(energy_bounds=energy_bounds, energy_power=2)
+plt.show()
 
 
 ######################################################################
@@ -402,3 +420,4 @@ flux_points = fpe.run(datasets=[stacked])
 
 ax = spec.plot_error(energy_bounds=energy_bounds, energy_power=2)
 flux_points.plot(ax=ax, energy_power=2)
+plt.show()

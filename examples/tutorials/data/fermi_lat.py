@@ -51,7 +51,7 @@ Setup
 -----
 
 **IMPORTANT**: For this notebook you have to get the prepared `3fhl`
-dataset provided in your $GAMMAPY_DATA.
+dataset provided in your `$GAMMAPY_DATA`.
 
 Note that the `3fhl` dataset is high-energy only, ranging from 10 GeV
 to 2 TeV.
@@ -63,8 +63,9 @@ from astropy.coordinates import SkyCoord
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.data import EventList
-from gammapy.datasets import MapDataset, Datasets
+from gammapy.datasets import Datasets, MapDataset
 from gammapy.irf import EDispKernelMap, PSFMap
 from gammapy.maps import Map, MapAxis, WcsGeom
 from gammapy.modeling import Fit
@@ -105,9 +106,9 @@ print(events)
 # event class, event type etc.
 #
 
-events.table.colnames
+print(events.table.colnames)
 
-events.table[:5][["ENERGY", "RA", "DEC"]]
+display(events.table[:5][["ENERGY", "RA", "DEC"]])
 
 print(events.time[0].iso)
 print(events.time[-1].iso)
@@ -154,10 +155,10 @@ counts = Map.create(
 # multiple times when executing the `fill_by_coord` multiple times.
 counts.fill_events(events)
 
-counts.geom.axes[0]
+print(counts.geom.axes[0])
 
 counts.sum_over_axes().smooth(2).plot(stretch="sqrt", vmax=30)
-
+plt.show()
 
 ######################################################################
 # Exposure
@@ -188,6 +189,7 @@ print(exposure_hpx.geom)
 print(exposure_hpx.geom.axes[0])
 
 exposure_hpx.plot()
+plt.show()
 
 ######################################################################
 # For exposure, we choose a geometry with node_type='center',
@@ -208,6 +210,7 @@ print(exposure.geom.axes[0])
 ######################################################################
 # Exposure is almost constant across the field of view
 exposure.slice_by_idx({"energy_true": 0}).plot(add_cbar=True)
+plt.show()
 
 ######################################################################
 # Exposure varies very little with energy at these high energies
@@ -249,8 +252,8 @@ diffuse_iem = SkyModel(
 ######################################################################
 # Let’s look at the map of first energy band of the cube:
 #
-
 template_diffuse.map.slice_by_idx({"energy_true": 0}).plot(add_cbar=True)
+plt.show()
 
 
 ######################################################################
@@ -261,6 +264,7 @@ dnde = template_diffuse.map.to_region_nd_map(region=gc_pos)
 dnde.plot()
 plt.xlabel("Energy (GeV)")
 plt.ylabel("Flux (cm-2 s-1 MeV-1 sr-1)")
+plt.show()
 
 
 ######################################################################
@@ -282,9 +286,9 @@ diffuse_iso = create_fermi_isotropic_diffuse_model(
 ######################################################################
 # We can plot the model in the energy range between 50 GeV and 2000 GeV:
 #
-
 energy_bounds = [50, 2000] * u.GeV
 diffuse_iso.spectral_model.plot(energy_bounds, yunits=u.Unit("1 / (cm2 MeV s)"))
+plt.show()
 
 
 ######################################################################
@@ -331,15 +335,17 @@ psf_mean.plot_psf_vs_rad(c="k", ls="--", energy_true=[500] * u.GeV)
 plt.xlim(1e-3, 0.3)
 plt.ylim(1e3, 1e6)
 plt.legend()
+plt.show()
 
 ######################################################################
-# This is whaty the corresponding PSF kernel looks like:
+# This is what the corresponding PSF kernel looks like:
 #
 
 psf_kernel = psf.get_psf_kernel(
     position=geom.center_skydir, geom=geom, max_radius="1 deg"
 )
 psf_kernel.to_image().psf_kernel_map.plot(stretch="log", add_cbar=True)
+plt.show()
 
 
 ######################################################################
@@ -355,6 +361,7 @@ edisp = EDispKernelMap.from_diagonal_response(
 )
 
 edisp.get_edisp_kernel().plot_matrix()
+plt.show()
 
 
 ######################################################################
@@ -397,13 +404,15 @@ print(result)
 print(models)
 
 residual = counts - dataset.npred()
+
 residual.sum_over_axes().smooth("0.1 deg").plot(
     cmap="coolwarm", vmin=-3, vmax=3, add_cbar=True
 )
+plt.show()
 
 ######################################################################
 # Serialisation
-# ---
+# -------------
 #
 # To serialise the created dataset, you must proceed through the
 # Datasets API
@@ -416,6 +425,7 @@ datasets_read = Datasets.read(
     filename="fermi_dataset.yaml", filename_models="fermi_models.yaml"
 )
 print(datasets_read)
+
 
 ######################################################################
 # Exercises

@@ -5,8 +5,17 @@ from numpy.testing import assert_allclose, assert_equal
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.units import Quantity, Unit
-from gammapy.maps import HpxGeom, HpxNDMap, Map, MapAxis, TimeMapAxis, WcsGeom, WcsNDMap
-from gammapy.utils.testing import mpl_plot_check
+from gammapy.maps import (
+    HpxGeom,
+    HpxNDMap,
+    Map,
+    MapAxis,
+    RegionNDMap,
+    TimeMapAxis,
+    WcsGeom,
+    WcsNDMap,
+)
+from gammapy.utils.testing import modify_unit_order_astropy_5_3, mpl_plot_check
 
 pytest.importorskip("healpy")
 
@@ -46,7 +55,7 @@ def test_map_copy(binsz, width, map_type, skydir, axes, unit):
     )
 
     m_copy = m.copy()
-    assert repr(m) == repr(m_copy)
+    assert str(m) == str(m_copy)
 
     m_copy = m.copy(unit="cm-2 s-1")
     assert m_copy.unit == "cm-2 s-1"
@@ -235,7 +244,7 @@ def test_map_properties():
     assert isinstance(m.unit, u.CompositeUnit)
     assert m._unit == u.one
     m._unit = u.Unit("cm-2 s-1")
-    assert m.unit.to_string() == "1 / (cm2 s)"
+    assert m.unit.to_string() == modify_unit_order_astropy_5_3("1 / (cm2 s)")
 
     assert isinstance(m.meta, dict)
     m.meta = {"spam": 42}
@@ -276,7 +285,6 @@ map_arithmetics_args = [("wcs"), ("hpx")]
 
 @pytest.mark.parametrize(("map_type"), map_arithmetics_args)
 def test_map_arithmetics(map_type):
-
     m1 = Map.create(binsz=0.1, width=1.0, map_type=map_type, skydir=(0, 0), unit="m2")
 
     m2 = Map.create(binsz=0.1, width=1.0, map_type=map_type, skydir=(0, 0), unit="m2")
@@ -379,10 +387,7 @@ def test_arithmetics_inconsistent_geom():
         m_wcs += m_hpx
 
 
-# TODO: correct serialization for lin axis for energy
-# map_serialization_args = [("log"), ("lin")]
-
-map_serialization_args = [("log")]
+map_serialization_args = [("log"), ("lin")]
 
 
 @pytest.mark.parametrize(("interp"), map_serialization_args)
@@ -431,6 +436,24 @@ def test_interp_to_geom():
     assert_allclose(interp_wcs_map.get_by_coord(coords)[0], value, atol=1e-7)
     assert isinstance(interp_wcs_map, WcsNDMap)
     assert interp_wcs_map.geom == wcs_geom_target
+
+    # WcsNDMap is_mask
+    geom_wcs = WcsGeom.create(
+        npix=(5, 3), proj="CAR", binsz=0.1, axes=[energy], skydir=(0, 0)
+    )
+
+    wcs_map = Map.from_geom(geom_wcs, unit="", data=True)
+    wcs_geom_target = WcsGeom.create(
+        skydir=(30, 30),
+        width=(10, 10),
+        binsz=0.1 * u.deg,
+        axes=[energy_target],
+        frame="galactic",
+    )
+    interp_wcs_map = wcs_map.interp_to_geom(
+        wcs_geom_target, method="linear", fill_value=None
+    )
+    assert np.all(interp_wcs_map.data)
 
     # HpxNDMap
     geom_hpx = HpxGeom.create(binsz=60, axes=[energy], skydir=(0, 0))
@@ -495,7 +518,7 @@ def test_reproject_2d():
     npix1 = 3
     geom1 = WcsGeom.create(npix=npix1, frame="icrs")
     geom1_large = WcsGeom.create(npix=npix1 + 5, frame="icrs")
-    map1 = Map.from_geom(geom1, data=np.eye(npix1))
+    map1 = Map.from_geom(geom1, data=np.eye(npix1), unit="s")
 
     factor = 10
     binsz = 0.5 / factor
@@ -505,6 +528,7 @@ def test_reproject_2d():
     )
 
     map1_repro = map1.reproject_to_geom(geom2, preserve_counts=True)
+    assert map1_repro.unit == map1.unit
     assert_allclose(np.sum(map1_repro), np.sum(map1), rtol=1e-5)
     map1_new = map1_repro.reproject_to_geom(geom1_large, preserve_counts=True)
     assert_allclose(np.sum(map1_repro), np.sum(map1_new), rtol=1e-5)
@@ -542,7 +566,7 @@ def test_reproject_2d():
 def test_resample_wcs_Wcs():
     npix1 = 3
     geom1 = WcsGeom.create(npix=npix1, frame="icrs")
-    map1 = Map.from_geom(geom1, data=np.eye(npix1))
+    map1 = Map.from_geom(geom1, data=np.eye(npix1), unit="1 / (GeV m2 s sr)")
 
     geom2 = WcsGeom.create(
         skydir=SkyCoord(0.0, 0.0, unit=u.deg), binsz=0.5, npix=7, frame="galactic"
@@ -554,6 +578,7 @@ def test_resample_wcs_Wcs():
         np.sum(map1 * geom1.solid_angle()),
         rtol=1e-3,
     )
+    assert map2.unit == map1.unit
 
 
 def test_resample_weights():
@@ -596,7 +621,7 @@ def test_resample_downsample_axis():
 
 def test_resample_wcs_hpx():
     geom1 = HpxGeom.create(nside=32, frame="icrs")
-    map1 = Map.from_geom(geom1, data=1.0)
+    map1 = Map.from_geom(geom1, data=1.0, unit="1 / (GeV m2 s sr)")
     geom2 = HpxGeom.create(
         skydir=SkyCoord(0.0, 0.0, unit=u.deg), nside=8, frame="galactic"
     )
@@ -607,6 +632,7 @@ def test_resample_wcs_hpx():
         np.sum(map1 * geom1.solid_angle()),
         rtol=1e-3,
     )
+    assert map2.unit == map1.unit
 
 
 def test_map_reproject_wcs_to_hpx():
@@ -704,6 +730,37 @@ def test_map_reproject_wcs_to_wcs_with_axes():
         ref = int(idx[1] / factor) + 0.5 * int(idx[0] / factor)
         if np.any(data > 0):
             assert_allclose(np.nanmean(data[data > 0]), ref)
+
+
+def test_map_reproject_by_image():
+    axis = MapAxis.from_bounds(
+        1.0, 10.0, 3, interp="log", name="energy_true", node_type="center"
+    )
+    axis2 = MapAxis.from_bounds(
+        1.0, 10.0, 8, interp="log", name="energy", node_type="center"
+    )
+    geom_wcs = WcsGeom.create(skydir=(0, 0), npix=(11, 11), binsz=10, frame="galactic")
+
+    geom_hpx = HpxGeom.create(binsz=10, frame="galactic", axes=[axis])
+    geom_hpx_wrong = HpxGeom.create(binsz=10, frame="galactic", axes=[axis, axis2])
+
+    m = HpxNDMap(geom_hpx_wrong)
+    m.reproject_by_image(geom_wcs)
+    assert len(m.geom.axes) == 2
+
+    data = np.arange(3 * 768).reshape(geom_hpx.data_shape)
+    m = HpxNDMap(geom_hpx, data=data)
+    geom_wcs_wrong = WcsGeom.create(
+        skydir=(0, 0), npix=(11, 11), binsz=10, axes=[axis], frame="galactic"
+    )
+    with pytest.raises(TypeError):
+        m.reproject_by_image(geom_wcs_wrong)
+
+    m_r = m.reproject_by_image(geom_wcs)
+    actual = m_r.get_by_coord(
+        {"lon": 0, "lat": 0, "energy_true": [1.0, 3.16227766, 10.0]}
+    )
+    assert_allclose(actual, [287.5, 1055.5, 1823.5], rtol=1e-3)
 
 
 def test_wcsndmap_reproject_allsky_car():
@@ -805,3 +862,104 @@ def test_rename_axes():
     new_map = m_4d.rename_axes("energy", "energy_true")
     assert m_4d.geom.axes.names == ["energy", "time"]
     assert new_map.geom.axes.names == ["energy_true", "time"]
+
+
+def test_reorder_axes_fail():
+    axis1 = MapAxis.from_edges((0, 1, 3), name="axis1")
+    axis2 = MapAxis.from_edges((0, 1, 2, 3, 4), name="axis2")
+
+    some_map = RegionNDMap.create(region=None, axes=[axis1, axis2])
+
+    with pytest.raises(ValueError):
+        some_map.reorder_axes(["axis3", "axis1"])
+
+    with pytest.raises(ValueError):
+        some_map.reorder_axes("axis3")
+
+
+def test_reorder_axes():
+    axis1 = MapAxis.from_edges((0, 1, 3), name="axis1")
+    axis2 = MapAxis.from_edges((0, 1, 2, 3, 4), name="axis2")
+    axis3 = MapAxis.from_edges((0, 1, 2, 3), name="axis3")
+
+    some_map = RegionNDMap.create(region=None, axes=[axis1, axis2, axis3])
+
+    some_map.data[:, 1, :] = 1
+
+    new_map = some_map.reorder_axes(["axis2", "axis1", "axis3"])
+
+    assert new_map.geom.axes.names == ["axis2", "axis1", "axis3"]
+    assert new_map.geom.data_shape == (3, 2, 4, 1, 1)
+
+    assert_allclose(new_map.data[:, :, 1], 1)
+
+
+def test_map_dot_product_fail():
+    axis1 = MapAxis.from_edges((0, 1, 2, 3), name="axis1")
+    axis2 = MapAxis.from_edges((0, 1, 2, 3, 4), name="axis2")
+    axis3 = MapAxis.from_edges((0, 1, 2), name="axis1")
+
+    map1 = WcsNDMap.create(npix=5, axes=[axis1])
+    map2 = RegionNDMap.create(region=None, axes=[axis2, axis3])
+    map3 = RegionNDMap.create(region=None, axes=[axis2, axis3])
+
+    with pytest.raises(TypeError):
+        map1.dot(map1)
+
+    with pytest.raises(ValueError):
+        map1.dot(map2)
+
+    with pytest.raises(ValueError):
+        map1.dot(map3)
+
+
+def test_map_dot_product():
+    axis1 = MapAxis.from_edges((0, 1, 3), name="axis1")
+    axis2 = MapAxis.from_edges((0, 1, 2, 3, 4), name="axis2")
+
+    map1 = WcsNDMap.create(npix=(5, 6), axes=[axis1])
+    map2 = RegionNDMap.create(region=None, axes=[axis1, axis2])
+
+    map1.data[0, ...] = 1
+    map1.data[1, ...] = 2
+    map2.data[0, 0, ...] = 1
+    map2.data[1, 1, ...] = 2
+
+    dot_map = map1 @ map2
+
+    assert dot_map.geom.axes.names == ["axis2"]
+    assert_allclose(dot_map.data[:, 0, 0], [1, 4, 0, 0])
+
+    map3 = RegionNDMap.create(region=None, axes=[axis1])
+    map3.data[1, 0, 0] = 1
+
+    dot_map = map1.dot(map3)
+    assert dot_map.geom.axes.names == []
+    assert_allclose(dot_map.data[0, 0], 2)
+
+    axis3 = MapAxis.from_edges((0, 1, 2, 3), name="axis3")
+    axis4 = MapAxis.from_edges((1, 2, 3, 4, 5), name="axis4")
+
+    map4 = RegionNDMap.create(region=None, axes=[axis2, axis3, axis4])
+    map4.data[...] = 1
+
+    dot_map = map4.dot(map2)
+
+    assert dot_map.geom.axes.names == ["axis1", "axis3", "axis4"]
+    assert dot_map.data.shape == (4, 3, 2, 1, 1)
+
+    dot_map = map2.dot(map4)
+
+    assert dot_map.geom.axes.names == ["axis1", "axis3", "axis4"]
+    assert dot_map.data.shape == (4, 3, 2, 1, 1)
+    assert_allclose(dot_map.data[0, 0, :, 0, 0], [1, 2])
+
+    map5 = RegionNDMap.create(region=None, axes=[axis3, axis2, axis4])
+    map5.data[:, 0, :, :, :] = 1
+
+    dot_map = map5.dot(map2)
+
+    assert dot_map.geom.axes.names == ["axis3", "axis1", "axis4"]
+    assert dot_map.data.shape == (4, 2, 3, 1, 1)
+
+    assert_allclose(dot_map.data[0, :, 0, 0, 0], [1, 0])

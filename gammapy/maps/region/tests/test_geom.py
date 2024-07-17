@@ -34,6 +34,19 @@ def test_create(region):
     assert not geom.is_allsky
 
 
+def test_from_regions(region):
+    RegionGeom.from_regions(region)
+
+    geom = RegionGeom.from_regions("galactic;circle(10,20,3)")
+    assert geom.region.radius.value == 3
+
+    geom = RegionGeom.from_regions(region.center)
+    assert geom.region.center == region.center
+
+    geom = RegionGeom.from_regions([])
+    assert geom.region is None
+
+
 def test_binsz(region):
     geom = RegionGeom.create(region, binsz_wcs=0.05)
     wcs_geom = geom.to_wcs_geom()
@@ -105,8 +118,13 @@ def test_get_coord(region, energy_axis, test_axis):
     assert_allclose(
         coords["energy"].value[0, :, 0, 0], [1.467799, 3.162278, 6.812921], rtol=1e-5
     )
-
     assert_allclose(coords["test"].value[:, 0, 0, 0].squeeze(), [1, 2], rtol=1e-5)
+
+    coords = geom.get_coord(sparse=False)
+    assert coords["lon"].shape == (2, 3, 1, 1)
+    assert coords["test"].shape == (2, 3, 1, 1)
+    assert coords["energy"].shape == (2, 3, 1, 1)
+    assert_allclose(coords["test"].value[:, 2, 0, 0].squeeze(), [1, 2], rtol=1e-5)
 
 
 def test_get_idx(region, energy_axis, test_axis):
@@ -263,12 +281,12 @@ def test_downsample(region):
     assert_allclose(geom_down.axes[0].edges.value, [1.0, 10.0], rtol=1e-5)
 
 
-def test_repr(region):
+def test_str(region):
     axis = MapAxis.from_edges([1, 3.162278, 10] * u.TeV, name="energy", interp="log")
     geom = RegionGeom.create(region, axes=[axis])
 
-    assert "RegionGeom" in repr(geom)
-    assert "CircleSkyRegion" in repr(geom)
+    assert "RegionGeom" in str(geom)
+    assert "CircleSkyRegion" in str(geom)
 
 
 def test_eq(region):
@@ -377,7 +395,8 @@ def test_get_wcs_coord_and_weights(region):
 def test_region_nd_map_plot(region):
     geom = RegionGeom(region)
 
-    ax = plt.subplot(projection=geom.wcs)
+    fig = plt.figure()
+    ax = fig.add_subplot(projection=geom.wcs)
     with mpl_plot_check():
         geom.plot_region(ax=ax)
 

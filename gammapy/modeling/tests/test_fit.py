@@ -3,10 +3,17 @@
 import pytest
 from numpy.testing import assert_allclose
 from astropy.table import Table
-from gammapy.datasets import Dataset
+from gammapy.datasets import Dataset, Datasets, SpectrumDatasetOnOff
 from gammapy.modeling import Fit, Parameter
-from gammapy.modeling.models import ModelBase, Models
-from gammapy.utils.testing import requires_dependency
+from gammapy.modeling.fit import FitResult
+from gammapy.modeling.models import (
+    LogParabolaSpectralModel,
+    ModelBase,
+    Models,
+    SkyModel,
+)
+from gammapy.utils.scripts import read_yaml
+from gammapy.utils.testing import requires_data, requires_dependency
 
 
 class MyModel(ModelBase):
@@ -90,6 +97,7 @@ def test_run(backend):
     result = fit.run([dataset])
     pars = dataset.models.parameters
 
+    assert fit._minuit is not None
     assert result.success
     assert result.optimize_result.method == "migrad"
     assert result.covariance_result.method == "hesse"
@@ -179,11 +187,6 @@ def test_optimize(backend):
     assert len(result.trace) == result.nfev
 
 
-# TODO: add some extra covariance tests, in addition to run
-# Probably mainly if error message is OK if optimize didn't run first.
-# def test_covariance():
-
-
 @pytest.mark.parametrize("backend", ["minuit"])
 def test_confidence(backend):
     dataset = MyDataset()
@@ -219,7 +222,7 @@ def test_stat_profile():
     dataset.models.parameters["x"].scan_n_values = 3
     result = fit.stat_profile(datasets=[dataset], parameter="x")
 
-    assert_allclose(result["x_scan"], [0, 2, 4], atol=1e-7)
+    assert_allclose(result["test.x_scan"], [0, 2, 4], atol=1e-7)
     assert_allclose(result["stat_scan"], [4, 0, 4], atol=1e-7)
     assert len(result["fit_results"]) == 0
 
@@ -236,7 +239,7 @@ def test_stat_profile_reoptimize():
     dataset.models.parameters["x"].scan_n_values = 3
     result = fit.stat_profile(datasets=[dataset], parameter="x", reoptimize=True)
 
-    assert_allclose(result["x_scan"], [0, 2, 4], atol=1e-7)
+    assert_allclose(result["test.x_scan"], [0, 2, 4], atol=1e-7)
     assert_allclose(result["stat_scan"], [4, 0, 4], atol=1e-7)
     assert_allclose(
         result["fit_results"][0].total_stat, result["stat_scan"][0], atol=1e-7
@@ -255,8 +258,8 @@ def test_stat_surface():
     dataset.models.parameters["y"].scan_values = y_values
     result = fit.stat_surface(datasets=[dataset], x="x", y="y")
 
-    assert_allclose(result["x_scan"], x_values, atol=1e-7)
-    assert_allclose(result["y_scan"], y_values, atol=1e-7)
+    assert_allclose(result["test.x_scan"], x_values, atol=1e-7)
+    assert_allclose(result["test.y_scan"], y_values, atol=1e-7)
     expected_stat = [
         [1.0001e04, 1.0000e00, 1.0001e04],
         [1.0000e04, 0.0000e00, 1.0000e04],
@@ -284,8 +287,8 @@ def test_stat_surface_reoptimize():
 
     result = fit.stat_surface(datasets=[dataset], x="x", y="y", reoptimize=True)
 
-    assert_allclose(result["x_scan"], x_values, atol=1e-7)
-    assert_allclose(result["y_scan"], y_values, atol=1e-7)
+    assert_allclose(result["test.x_scan"], x_values, atol=1e-7)
+    assert_allclose(result["test.y_scan"], y_values, atol=1e-7)
     expected_stat = [
         [1.0001e04, 1.0000e00, 1.0001e04],
         [1.0000e04, 0.0000e00, 1.0000e04],
@@ -307,11 +310,11 @@ def test_stat_contour():
 
     assert result["success"]
 
-    x = result["y"]
+    x = result["test.y"]
     assert len(x) in [10, 11]  # Behavior changed after iminuit>=2.13
     assert_allclose(x[0], 299, rtol=1e-5)
     assert_allclose(x[9], 299.133975, rtol=1e-5)
-    y = result["z"]
+    y = result["test.z"]
     assert len(x) == len(y)
     assert len(y) in [10, 11]
     assert_allclose(y[0], 0.04, rtol=1e-5)
@@ -319,3 +322,45 @@ def test_stat_contour():
 
     # Check that original value state wasn't changed
     assert_allclose(dataset.models.parameters["y"].value, 300)
+
+
+@requires_data()
+def test_write(tmpdir):
+    datasets = Datasets()
+    for obs_id in [23523, 23526]:
+        dataset = SpectrumDatasetOnOff.read(
+            f"$GAMMAPY_DATA/joint-crab/spectra/hess/pha_obs{obs_id}.fits"
+        )
+        datasets.append(dataset)
+
+    datasets = datasets.stack_reduce(name="HESS")
+    model = SkyModel(spectral_model=LogParabolaSpectralModel(), name="crab")
+    datasets.models = model
+    fit = Fit()
+    result = fit.run(datasets)
+
+    result_dict = result.covariance_result.to_dict()
+    assert (
+        result_dict["CovarianceResult"]["backend"] == result.covariance_result.backend
+    )
+    result_dict = result.optimize_result.to_dict()
+    assert result_dict["OptimizeResult"]["nfev"] == result.optimize_result.nfev
+    assert (
+        result_dict["OptimizeResult"]["total_stat"] == result.optimize_result.total_stat
+    )
+
+    filename = tmpdir / "test-fit-result.yaml"
+
+    result.write(filename)
+    data = read_yaml(filename)
+    assert "CovarianceResult" in data
+    assert "OptimizeResult" in data
+
+    optimize_result = fit.optimize(datasets)
+    result = FitResult(optimize_result=optimize_result)
+
+    result.write(filename, overwrite=True)
+    data = read_yaml(filename)
+
+    assert "CovarianceResult" not in data
+    assert "OptimizeResult" in data

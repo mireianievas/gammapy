@@ -129,6 +129,14 @@ def test_psf_map_containment():
     assert_allclose(psf_map.containment(rad=10 * u.deg, energy_true=[10] * u.TeV), 1)
 
 
+def test_psf_map_cutout():
+    psf_map = make_test_psfmap(0.15 * u.deg)
+    psf_map_cutout = psf_map.cutout(
+        position=SkyCoord(1, 1, unit="deg"), width=(1, 0.01)
+    )
+    assert_allclose(psf_map_cutout.psf_map.geom.data_shape, (4, 100, 3, 5))
+
+
 def test_psfmap_to_psf_kernel():
     psfmap = make_test_psfmap(0.15 * u.deg)
 
@@ -244,13 +252,16 @@ def test_sample_coord_gauss():
 def make_psf_map_obs(geom, obs):
     exposure_map = make_map_exposure_true_energy(
         geom=geom.squash(axis_name="rad"),
-        pointing=obs.pointing_radec,
+        pointing=obs.get_pointing_icrs(obs.tmid),
         aeff=obs.aeff,
         livetime=obs.observation_live_time_duration,
     )
 
     psf_map = make_psf_map(
-        geom=geom, psf=obs.psf, pointing=obs.pointing_radec, exposure_map=exposure_map
+        geom=geom,
+        psf=obs.psf,
+        pointing=obs.get_pointing_icrs(obs.tmid),
+        exposure_map=exposure_map,
     )
     return psf_map
 
@@ -484,7 +495,7 @@ def test_psf_map_plot_psf_vs_rad():
 
 @requires_data()
 def test_psf_containment_coords():
-    # regression test to check the cooordinate conversion for PSFMap.containment
+    # regression test to check the coordinate conversion for PSFMap.containment
     psf = PSFMap.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz", hdu="PSF")
 
     position = SkyCoord("266.415d", "-29.006d", frame="icrs")
@@ -564,6 +575,25 @@ def test_psf_map_reco_hawc():
     assert "energy" in reco_psf_map.psf_map.geom.axes.names
     assert reco_psf_map.energy_name == "energy"
     assert reco_psf_map.required_axes == ["rad", "energy"]
+    assert reco_psf_map.exposure_map is None
+
+    with mpl_plot_check():
+        reco_psf_map.plot_containment_radius_vs_energy()
+
+    with mpl_plot_check():
+        reco_psf_map.plot_psf_vs_rad()
+
+    assert_allclose(
+        reco_psf_map.containment_radius(0.68, [1, 2] * u.TeV),
+        [0.001, 0.43733357] * u.deg,
+    )
+
+    reco_psf_map = PSFMap.read(filename, format="gadf")
+    assert isinstance(reco_psf_map, RecoPSFMap)
+    assert "energy" in reco_psf_map.psf_map.geom.axes.names
+    assert reco_psf_map.energy_name == "energy"
+    assert reco_psf_map.required_axes == ["rad", "energy"]
+    assert reco_psf_map.exposure_map is None
 
     with mpl_plot_check():
         reco_psf_map.plot_containment_radius_vs_energy()

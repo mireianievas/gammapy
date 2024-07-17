@@ -7,7 +7,7 @@ Compute per-observation and nightly fluxes of four Crab nebula observations.
 Prerequisites
 -------------
 
--  Knowledge of the high level interface to perform data reduction, see
+-  Knowledge of the high level interface to perform data reduction, see the
    :doc:`/tutorials/starting/analysis_1` tutorial.
 
 Context
@@ -19,15 +19,14 @@ bins.
 
 Cherenkov telescopes usually work with observing runs and distribute
 data according to this basic time interval. A typical use case is to
-look for variability of a source on various time binnings: observation
+look for variability of a source on various time bins: observation
 run-wise binning, nightly, weekly etc.
 
 **Objective: The Crab nebula is not known to be variable at TeV
 energies, so we expect constant brightness within statistical and
 systematic errors. Compute per-observation and nightly fluxes of the
 four Crab nebula observations from the H.E.S.S. first public test data
-release**\ `o <https://www.mpi-hd.mpg.de/hfm/HESS/pages/dl3-dr1/>`__\ **to
-check it.**
+release.**
 
 Proposed approach
 -----------------
@@ -43,7 +42,6 @@ extract a light curve independently of the dataset type.
 
 """
 
-
 ######################################################################
 # Setup
 # -----
@@ -58,6 +56,7 @@ from astropy.time import Time
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.analysis import Analysis, AnalysisConfig
 from gammapy.estimators import LightCurveEstimator
 from gammapy.modeling.models import (
@@ -86,7 +85,7 @@ check_tutorials_setup()
 # using the high level interface of Gammapy.
 #
 # From the high level interface, the data reduction for those observations
-# is performed as followed
+# is performed as follows.
 #
 
 
@@ -102,7 +101,8 @@ conf_3d = AnalysisConfig()
 # Definition of the data selection
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# Here we use the Crab runs from the HESS DL3 data release 1
+# Here we use the Crab runs from the
+# `H.E.S.S. DL3 data release 1 <https://www.mpi-hd.mpg.de/hfm/HESS/pages/dl3-dr1/>`__.
 #
 
 conf_3d.observations.obs_ids = [23523, 23526, 23559, 23592]
@@ -190,7 +190,7 @@ analysis_3d.set_models(models)
 # bin.
 #
 # If we don’t set any time interval, the
-# `~gammapy.estimators.LightCurveEstimator` is determines the flux of
+# `~gammapy.estimators.LightCurveEstimator` determines the flux of
 # each dataset and places it at the corresponding time in the light curve.
 # Here one dataset equals to one observing run.
 #
@@ -207,16 +207,21 @@ lc_3d = lc_maker_3d.run(analysis_3d.datasets)
 
 
 ######################################################################
-# The LightCurve object contains a table which we can explore.
+# The lightcurve `~gammapy.estimators.FluxPoints` object `lc_3d` contains a table which we can explore.
 #
 
 # Example showing how to change just before plotting the threshold on the signal significance
 # (points vs upper limits), even if this has no effect with this data set.
+fig, ax = plt.subplots(
+    figsize=(8, 6),
+    gridspec_kw={"left": 0.16, "bottom": 0.2, "top": 0.98, "right": 0.98},
+)
 lc_3d.sqrt_ts_threshold_ul = 5
-lc_3d.plot(axis_name="time")
+lc_3d.plot(ax=ax, axis_name="time")
+plt.show()
 
 table = lc_3d.to_table(format="lightcurve", sed_type="flux")
-table["time_min", "time_max", "e_min", "e_max", "flux", "flux_err"]
+display(table["time_min", "time_max", "e_min", "e_max", "flux", "flux_err"])
 
 
 ######################################################################
@@ -237,7 +242,8 @@ conf_1d = AnalysisConfig()
 # Definition of the data selection
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# Here we use the Crab runs from the HESS DL3 data release 1
+# Here we use the Crab runs from the
+# `H.E.S.S. DL3 data release 1 <https://www.mpi-hd.mpg.de/hfm/HESS/pages/dl3-dr1/>`__
 #
 
 conf_1d.observations.obs_ids = [23523, 23526, 23559, 23592]
@@ -316,9 +322,9 @@ lc_maker_1d = LightCurveEstimator(
 )
 lc_1d = lc_maker_1d.run(analysis_1d.datasets)
 
-lc_1d.geom.axes.names
+print(lc_1d.geom.axes.names)
 
-lc_1d.to_table(sed_type="flux", format="lightcurve")
+display(lc_1d.to_table(sed_type="flux", format="lightcurve"))
 
 
 ######################################################################
@@ -329,9 +335,14 @@ lc_1d.to_table(sed_type="flux", format="lightcurve")
 # figure:
 #
 
-ax = lc_1d.plot(marker="o", label="1D")
+fig, ax = plt.subplots(
+    figsize=(8, 6),
+    gridspec_kw={"left": 0.16, "bottom": 0.2, "top": 0.98, "right": 0.98},
+)
+lc_1d.plot(ax=ax, marker="o", label="1D")
 lc_3d.plot(ax=ax, marker="o", label="3D")
 plt.legend()
+plt.show()
 
 
 ######################################################################
@@ -351,7 +362,7 @@ time_intervals = [
 
 ######################################################################
 # To compute the LC on the time intervals defined above, we pass the
-# `LightCurveEstimator` the list of time intervals.
+# `~gammapy.estimators.LightCurveEstimator` the list of time intervals.
 #
 # Internally, datasets are grouped per time interval and a flux extraction
 # is performed for each group.
@@ -367,10 +378,15 @@ lc_maker_1d = LightCurveEstimator(
 
 nightwise_lc = lc_maker_1d.run(analysis_1d.datasets)
 
-nightwise_lc.plot(color="tab:orange")
-ax = nightwise_lc.plot_ts_profiles()
+fig, ax = plt.subplots(
+    figsize=(8, 6),
+    gridspec_kw={"left": 0.16, "bottom": 0.2, "top": 0.98, "right": 0.98},
+)
+nightwise_lc.plot(ax=ax, color="tab:orange")
+nightwise_lc.plot_ts_profiles(ax=ax)
 ax.set_ylim(1e-12, 3e-12)
 
+plt.show()
 
 ######################################################################
 # What next?

@@ -9,7 +9,7 @@ related to modeling and fitting data. This includes spectral, spatial
 and temporal model classes, as well as the fit and parameter API.The
 models follow a naming scheme which contains the category as a suffix to
 the class name. An overview of all the available models can be found in
-the `model gallery <../../user-guide/model-gallery/index.rst>`__.
+the :ref:`model-gallery`.
 
 Note that there are separate tutorials,
 :doc:`/tutorials/api/model_management` and
@@ -20,7 +20,6 @@ data.
 
 """
 
-
 ######################################################################
 # Setup
 # -----
@@ -30,6 +29,7 @@ data.
 import numpy as np
 from astropy import units as u
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.maps import Map, MapAxis, WcsGeom
 
 ######################################################################
@@ -45,7 +45,7 @@ check_tutorials_setup()
 # ---------------
 #
 # All models are imported from the `~gammapy.modeling.models` namespace.
-# Let’s start with a `PowerLawSpectralModel`:
+# Let’s start with a `~gammapy.modeling.models.PowerLawSpectralModel`:
 #
 
 from gammapy.modeling.models import PowerLawSpectralModel
@@ -56,7 +56,7 @@ print(pwl)
 
 ######################################################################
 # To get a list of all available spectral models you can import and print
-# the spectral model registry or take a look at the :ref:`spectral-models-gallery`
+# the spectral model registry or take a look at the :ref:`model-gallery`
 #
 
 from gammapy.modeling.models import SPECTRAL_MODEL_REGISTRY
@@ -133,6 +133,7 @@ print(energy)
 #
 
 pwl.plot(energy_bounds=[1, 100] * u.TeV)
+plt.show()
 
 
 ######################################################################
@@ -150,7 +151,7 @@ pwl.plot(energy_bounds=[1, 100] * u.TeV)
 # spectral shape. They can be typically used for adjusting template based
 # models, or adding a EBL correction to some analytic model.
 #
-# To check if a given `SpectralModel` is a norm model, you can simply
+# To check if a given `~gammapy.modeling.models.SpectralModel` is a norm model, you can simply
 # look at the `is_norm_spectral_model` property
 #
 
@@ -161,7 +162,7 @@ for model in SPECTRAL_MODEL_REGISTRY:
 
 
 ######################################################################
-# As an example, we see the `PowerLawNormSpectralModel`
+# As an example, we see the `~gammapy.modeling.models.PowerLawNormSpectralModel`
 #
 
 from gammapy.modeling.models import PowerLawNormSpectralModel
@@ -175,12 +176,12 @@ print(pwl_norm)
 #
 
 energy = [0.3, 1, 3, 10, 30] * u.TeV
-pwl_norm(energy)
+print(pwl_norm(energy))
 
 
 ######################################################################
 # A typical use case of a norm model would be in applying spectral
-# correction to a `TemplateSpectralModel`. A template model is defined
+# correction to a `~gammapy.modeling.models.TemplateSpectralModel`. A template model is defined
 # by custom tabular values provided at initialization.
 #
 
@@ -193,6 +194,7 @@ template.plot(energy_bounds=[0.2, 50] * u.TeV, label="template model")
 normed_template = template * pwl_norm
 normed_template.plot(energy_bounds=[0.2, 50] * u.TeV, label="normed_template model")
 plt.legend()
+plt.show()
 
 
 ######################################################################
@@ -223,7 +225,7 @@ print(model_add)
 
 ######################################################################
 # Spatial models are imported from the same `~gammapy.modeling.models`
-# namespace, let’s start with a `GaussianSpatialModel`:
+# namespace, let’s start with a `~gammapy.modeling.models.GaussianSpatialModel`:
 #
 
 from gammapy.modeling.models import GaussianSpatialModel
@@ -234,7 +236,7 @@ print(gauss)
 
 ######################################################################
 # Again you can check the `SPATIAL_MODELS` registry to see which models
-# are available or take a look at the :ref:`spatial-models-gallery`
+# are available or take a look at the :ref:`model-gallery`
 #
 
 from gammapy.modeling.models import SPATIAL_MODEL_REGISTRY
@@ -281,18 +283,19 @@ print(flux_per_omega)
 m = Map.create(skydir=(0, 0), width=(1, 1), binsz=0.02, frame="galactic")
 m.quantity = gauss.evaluate_geom(m.geom)
 m.plot(add_cbar=True)
+plt.show()
 
 
 ######################################################################
 # Again for convenience the model can be plotted directly:
 #
-
 gauss.plot(add_cbar=True)
+plt.show()
 
 
 ######################################################################
 # All spatial models have an associated sky region to it e.g. to
-# illustrate the extend of the model on a sky image. The returned object
+# illustrate the extension of the model on a sky image. The returned object
 # is an `~regions.SkyRegion` object:
 #
 
@@ -300,19 +303,19 @@ print(gauss.to_region())
 
 
 ######################################################################
-# Now we can plot the region on an sky image:
+# Now we can plot the region on a sky image:
 #
 
-# create and plot the model
+plt.figure()
 gauss_elongated = GaussianSpatialModel(
     lon_0="0 deg", lat_0="0 deg", sigma="0.2 deg", e=0.7, phi="45 deg"
 )
 ax = gauss_elongated.plot(add_cbar=True)
 
-# add region illustration
 region = gauss_elongated.to_region()
 region_pix = region.to_pixel(ax.wcs)
 ax.add_artist(region_pix.as_artist(ec="w", fc="None"))
+plt.show()
 
 
 ######################################################################
@@ -342,7 +345,7 @@ regions.write(
 
 ######################################################################
 # Temporal models are imported from the same `~gammapy.modeling.models`
-# namespace, let’s start with a `GaussianTemporalModel`:
+# namespace, let’s start with a `~gammapy.modeling.models.GaussianTemporalModel`:
 #
 
 from gammapy.modeling.models import GaussianTemporalModel
@@ -378,15 +381,13 @@ gauss_temp(time)
 
 time = Time([59233.0, 59250], format="mjd")
 gauss_temp.plot(time)
+plt.show()
 
 
 ######################################################################
 # SkyModel
 # --------
 #
-
-
-######################################################################
 # The `~gammapy.modeling.models.SkyModel` class combines a spectral, and
 # optionally, a spatial model and a temporal. It can be created from
 # existing spectral, spatial and temporal model components:
@@ -406,7 +407,7 @@ print(model)
 ######################################################################
 # It is good practice to specify a name for your sky model, so that you
 # can access it later by name and have meaningful identifier you
-# serilisation. If you don’t define a name, a unique random name is
+# serialisation. If you don’t define a name, a unique random name is
 # generated:
 #
 
@@ -419,11 +420,13 @@ print(model_without_name.name)
 # ``.spectral_model``, ``.spatial_model`` and ``.temporal_model``:
 #
 
-model.spectral_model
+print(model.spectral_model)
 
-model.spatial_model
+# %%
+print(model.spatial_model)
 
-model.temporal_model
+# %%
+print(model.temporal_model)
 
 
 ######################################################################
@@ -431,6 +434,7 @@ model.temporal_model
 #
 
 model.spectral_model.plot(energy_bounds=[1, 10] * u.TeV)
+plt.show()
 
 
 ######################################################################
@@ -469,7 +473,7 @@ print(diffuse)
 # Note that if the spatial model is not normalized over the sky it has to
 # be combined with a normalized spectral model, for example
 # `~gammapy.modeling.models.PowerLawNormSpectralModel`. This is the only
-# case in `gammapy.models.SkyModel` where the unit is fully attached to
+# case in `~gammapy.models.SkyModel` where the unit is fully attached to
 # the spatial model.
 #
 
@@ -495,12 +499,12 @@ model.spectral_model.index.min = 1.0
 model.spectral_model.index.max = 5.0
 
 # Visualise the model as a table
-model.parameters.to_table().show_in_notebook()
+display(model.parameters.to_table())
 
 
 ######################################################################
 # You can use the interactive boxes to choose model parameters by name,
-# type or other attrributes mentioned in the column names.
+# type or other attributes mentioned in the column names.
 #
 
 
@@ -510,7 +514,7 @@ model.parameters.to_table().show_in_notebook()
 #
 # In a typical analysis scenario a model consists of multiple model
 # components, or a “catalog” or “source library”. To handle this list of
-# multiple model components, Gammapy has a `Models` class:
+# multiple model components, Gammapy has a `~gammapy.modeling.models.Models` class:
 #
 
 from gammapy.modeling.models import Models
@@ -537,9 +541,10 @@ print(models.names)
 
 
 ######################################################################
-# Note that a `SkyModel` object can be evaluated for a given longitude,
-# latitude, and energy, but the `Models` object cannot. This `Models`
-# container object will be assigned to `Dataset` or `Datasets`
+# Note that a `~gammapy.modeling.models.SkyModel` object can be evaluated for a given longitude,
+# latitude, and energy, but the `~gammapy.modeling.models.Models` object cannot.
+# This `~gammapy.modeling.models.Models`
+# container object will be assigned to `~gammapy.datasets.Dataset` or `~gammapy.datasets.Datasets`
 # together with the data to be fitted. Checkout e.g. the
 # :doc:`/tutorials/api/model_management` tutorial for details.
 #
@@ -562,13 +567,13 @@ print(models_yaml)
 
 ######################################################################
 # The structure of the yaml files follows the structure of the python
-# objects. The ``components`` listed correspond to the `SkyModel` and
-# components of the ``Models``. For each ``SkyModel``
+# objects. The ``components`` listed correspond to the `~gammapy.modeling.models.SkyModel` and
+# components of the `~gammapy.modeling.models.Models`. For each `~gammapy.modeling.models.SkyModel`
 # we have information about its ``name``, ``type`` (corresponding to the
-# tag attribute) and sub-mobels (i.e ``spectral`` model and eventually
+# tag attribute) and sub-models (i.e ``spectral`` model and eventually
 # ``spatial`` model). Then the spatial and spectral models are defined by
 # their type and parameters. The ``parameters`` keys name/value/unit are
-# mandatory, while the keys min/max/frozen are optionnals (so you can
+# mandatory, while the keys min/max/frozen are optional (so you can
 # prepare shorter files).
 #
 # If you want to write this list of models to disk and read it back later
@@ -581,8 +586,8 @@ models_read = Models.read("models.yaml")
 
 
 ######################################################################
-# Additionally the models can exported and imported togeter with the data
-# using the ``Datasets.read()`` and ``Datasets.write()`` methods as shown
+# Additionally the models can be exported and imported together with the data
+# using the `~gammapy.datasets.Datasets.read()` and `~gammapy.datasets.Datasets.write()` methods as shown
 # in the :doc:`/tutorials/analysis-3d/analysis_mwl`
 # notebook.
 #
@@ -620,7 +625,7 @@ print(models_yaml)
 # ---------------------------
 #
 # In order to add a user defined spectral model you have to create a
-# SpectralModel subclass. This new model class should include:
+# `~gammapy.modeling.models.SpectralModel` subclass. This new model class should include:
 #
 # -  a tag used for serialization (it can be the same as the class name)
 # -  an instantiation of each Parameter with their unit, default values
@@ -638,7 +643,7 @@ from gammapy.modeling.models import SpectralModel
 
 
 class MyCustomSpectralModel(SpectralModel):
-    """My custom spectral model, parametrising a power law plus a Gaussian spectral line.
+    """My custom spectral model, parametrizing a power law plus a Gaussian spectral line.
 
     Parameters
     ----------
@@ -676,9 +681,9 @@ class MyCustomSpectralModel(SpectralModel):
 
 ######################################################################
 # It is good practice to also implement a docstring for the model,
-# defining the parameters and also definig a ``.tag``, which specifies the
+# defining the parameters and also defining a ``.tag``, which specifies the
 # name of the model for serialisation. Also note that gammapy assumes that
-# all SpectralModel evaluate functions return a flux in unit of
+# all `~gammapy.modeling.models.SpectralModel` evaluate functions return a flux in unit of
 # `"cm-2 s-1 TeV-1"` (or equivalent dimensions).
 #
 # This model can now be used as any other spectral model in Gammapy:
@@ -687,15 +692,16 @@ class MyCustomSpectralModel(SpectralModel):
 my_custom_model = MyCustomSpectralModel(mean="3 TeV")
 print(my_custom_model)
 
-my_custom_model.integral(1 * u.TeV, 10 * u.TeV)
+print(my_custom_model.integral(1 * u.TeV, 10 * u.TeV))
 
 my_custom_model.plot(energy_bounds=[1, 10] * u.TeV)
+plt.show()
 
 
 ######################################################################
 # As a next step we can also register the custom model in the
 # ``SPECTRAL_MODELS`` registry, so that it becomes available for
-# serilisation:
+# serialization:
 #
 
 SPECTRAL_MODEL_REGISTRY.append(MyCustomSpectralModel)
@@ -726,7 +732,7 @@ models.write("my-custom-models.yaml", overwrite=True)
 # bands.
 #
 # `~gammapy.modeling.models.SkyModel` offers a natural framework to simultaneously model the
-# energy and morphology, e.g. spatial extent described by a parametric
+# energy and morphology, e.g. spatial extent described by a parametric
 # model expression with energy dependent parameters.
 #
 # The models shipped within gammapy use a “factorised” representation of
@@ -734,21 +740,22 @@ models.write("my-custom-models.yaml", overwrite=True)
 # and time (:math:`t`) dependence are independent model components and not
 # correlated:
 #
-# :raw-latex:`\begin{align}f(l, b, E, t) = F(l, b) \cdot G(E) \cdot H(t)\end{align}`
+# .. math::
+#     \begin{align}f(l, b, E, t) = F(l, b) \cdot G(E) \cdot H(t)\end{align}
 #
-# To use full 3D models, ie $f(l, b, E) = F(l, b, E)
-# :raw-latex:`\cdot`\ G(E) $, you have to implement your own custom
+# To use full 3D models, ie :math:`f(l, b, E) = F(l, b, E) \cdot \ G(E)`,
+# you have to implement your own custom
 # `SpatialModel`. Note that it is still necessary to multiply by a
 # `SpectralModel`, :math:`G(E)` to be dimensionally consistent.
 #
 # In this example, we create Gaussian Spatial Model with the extension
-# varying with energy. For simplicity, we assume a linear dependence on
+# varying with energy. For simplicity, we assume a linear dependency on
 # energy and parameterize this by specifying the extension at 2 energies.
-# You can add more complex dependences, probably motivated by physical
+# You can add more complex dependencies, probably motivated by physical
 # models.
 #
 
-from astropy.coordinates.angle_utilities import angular_separation
+from astropy.coordinates import angular_separation
 from gammapy.modeling.models import SpatialModel
 
 
@@ -794,17 +801,17 @@ class MyCustomGaussianModel(SpatialModel):
 
 ######################################################################
 # Serialisation of this model can be achieved as explained in the previous
-# section. You can now use it as standard ``SpatialModel`` in your
-# analysis. Note that this is still a ``SpatialModel`` and not a
-# ``SkyModel``, so it needs to be multiplied by a ``SpectralModel`` as
-# before.
+# section. You can now use it as standard `~gammapy.modeling.models.SpatialModel` in your
+# analysis. Note that this is still a `~gammapy.modeling.models.SpatialModel` and not a
+# `~gammapy.modeling.models.SkyModel`, so it needs to be multiplied by a
+# `~gammapy.modeling.models.SpectralModel` as before.
 #
 
 spatial_model = MyCustomGaussianModel()
 spectral_model = PowerLawSpectralModel()
 sky_model = SkyModel(spatial_model=spatial_model, spectral_model=spectral_model)
 
-spatial_model.evaluation_radius
+print(spatial_model.evaluation_radius)
 
 
 ######################################################################
@@ -818,10 +825,11 @@ geom = WcsGeom.create(skydir=(0, 0), width=5.0 * u.deg, binsz=0.1, axes=[energy_
 
 spatial_model.plot_grid(geom=geom, add_cbar=True, figsize=(14, 3))
 
+plt.show()
 
 ######################################################################
 # For computational purposes, it is useful to specify a
-# ``evaluation_radius`` for ``SpatialModels`` - this gives a size on which
+# ``evaluation_radius`` for `~gammapy.modeling.models.SpatialModels` - this gives a size on which
 # to compute the model. Though optional, it is highly recommended for
 # Custom Spatial Models. This can be done, for ex, by defining the
 # following function inside the above class:

@@ -12,7 +12,11 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
 )
 from gammapy.utils.gauss import Gauss2DPDF
-from gammapy.utils.testing import assert_quantity_allclose, requires_data
+from gammapy.utils.testing import (
+    assert_quantity_allclose,
+    modify_unit_order_astropy_5_3,
+    requires_data,
+)
 
 SOURCES = [
     {"idx": 33, "name": "HESS J1713-397", "str_ref_file": "data/hess_j1713-397.txt"},
@@ -99,8 +103,11 @@ class TestSourceCatalogObjectHGPS:
     @pytest.mark.parametrize("ref", SOURCES)
     def test_str(cat, ref):
         actual = str(cat[ref["idx"]])
-        expected = open(get_pkg_data_filename(ref["str_ref_file"])).read()
-        assert actual == expected
+
+        with open(get_pkg_data_filename(ref["str_ref_file"])) as fh:
+            expected = fh.read()
+
+        assert actual == modify_unit_order_astropy_5_3(expected)
 
     @staticmethod
     def test_position(source):
@@ -256,7 +263,7 @@ class TestSourceCatalogObjectHGPS:
         assert_allclose(p["lon_0"].value, 266.287384)
         assert_allclose(p["lat_0"].value, -1.243260383605957)
         assert_allclose(p["radius"].value, 0.95)
-        assert_allclose(p["width"].value, 0.05)
+        assert_allclose(p["width"].value, 0.05, rtol=1e-6)
 
     @staticmethod
     def test_flux_points_meta(cat):
@@ -304,28 +311,28 @@ class TestSourceCatalogObjectHGPSComponent:
 
 
 class TestSourceCatalogLargeScaleHGPS:
-    def setup(self):
+    @pytest.fixture(scope="class")
+    def model(self):
         table = Table()
         table["GLON"] = [-30, -10, 10, 20] * u.deg
         table["Surface_Brightness"] = [0, 1, 10, 0] * u.Unit("cm-2 s-1 sr-1")
         table["GLAT"] = [-1, 0, 1, 0] * u.deg
         table["Width"] = [0.4, 0.5, 0.3, 1.0] * u.deg
-        self.table = table
-        self.model = SourceCatalogLargeScaleHGPS(table)
+        return SourceCatalogLargeScaleHGPS(table)
 
-    def test_evaluate(self):
+    def test_evaluate(self, model):
         x = np.linspace(-100, 20, 5)
         y = np.linspace(-2, 2, 7)
         x, y = np.meshgrid(x, y)
         coords = SkyCoord(x, y, unit="deg", frame="galactic")
-        image = self.model.evaluate(coords)
+        image = model.evaluate(coords)
         desired = 1.223962643740966 * u.Unit("cm-2 s-1 sr-1")
         assert_quantity_allclose(image.sum(), desired)
 
-    def test_parvals(self):
+    def test_parvals(self, model):
         glon = Angle(10, unit="deg")
         assert_quantity_allclose(
-            self.model.peak_brightness(glon), 10 * u.Unit("cm-2 s-1 sr-1")
+            model.peak_brightness(glon), 10 * u.Unit("cm-2 s-1 sr-1")
         )
-        assert_quantity_allclose(self.model.peak_latitude(glon), 1 * u.deg)
-        assert_quantity_allclose(self.model.width(glon), 0.3 * u.deg)
+        assert_quantity_allclose(model.peak_latitude(glon), 1 * u.deg)
+        assert_quantity_allclose(model.width(glon), 0.3 * u.deg)

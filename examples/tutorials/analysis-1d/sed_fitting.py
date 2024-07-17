@@ -8,8 +8,7 @@ Fit spectral models to combined Fermi-LAT and IACT flux points tables.
 Prerequisites
 -------------
 
--  Some knowledge about retrieving information from catalogs,
- see :doc:`/tutorials/api/catalog` tutorial.
+-  Some knowledge about retrieving information from catalogs, see :doc:`/tutorials/api/catalog` tutorial.
 
 Context
 -------
@@ -29,7 +28,7 @@ Proposed approach
 
 Here we will load, the spectral points from Fermi-LAT and TeV catalogs
 and fit them with various spectral models to find the best
-representation of the wide band spectrum.
+representation of the wide-band spectrum.
 
 The central class we’re going to use for this example analysis is:
 
@@ -49,7 +48,6 @@ And the following spectral model classes:
 -  `~gammapy.modeling.models.LogParabolaSpectralModel`
 
 """
-
 
 ######################################################################
 # Setup
@@ -160,6 +158,7 @@ pwl.plot_error(energy_bounds=energy_bounds, **kwargs)
 ax.set_ylim(1e-13, 1e-11)
 ax.set_xlim(energy_bounds)
 ax.legend()
+plt.show()
 
 
 ######################################################################
@@ -208,7 +207,7 @@ ecpl.plot_error(energy_bounds=energy_bounds, **kwargs)
 ax.set_ylim(1e-13, 1e-11)
 ax.set_xlim(energy_bounds)
 ax.legend()
-
+plt.show()
 
 ######################################################################
 # Log-Parabola Fit
@@ -241,7 +240,7 @@ log_parabola.plot_error(energy_bounds=energy_bounds, **kwargs)
 ax.set_ylim(1e-13, 1e-11)
 ax.set_xlim(energy_bounds)
 ax.legend()
-
+plt.show()
 
 ######################################################################
 # Exercises

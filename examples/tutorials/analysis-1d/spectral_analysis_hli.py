@@ -16,7 +16,7 @@ Context
 This notebook is an introduction to gammapy analysis using the high
 level interface.
 
-Gammapy analysis consists in two main steps.
+Gammapy analysis consists of two main steps.
 
 The first one is data reduction: user selected observations are reduced
 to a geometry defined by the user. It can be 1D (spectrum from a given
@@ -24,7 +24,7 @@ extraction region) or 3D (with a sky projection and an energy axis). The
 resulting reduced data and instrument response functions (IRF) are
 called datasets in Gammapy.
 
-The second step consists in setting a physical model on the datasets and
+The second step consists of setting a physical model on the datasets and
 fitting it to obtain relevant physical information.
 
 **Objective: Create a 1D dataset of the Crab using the H.E.S.S. DL3 data
@@ -63,16 +63,16 @@ In summary, we have to:
 
 """
 
+from pathlib import Path
+
+# %matplotlib inline
+import matplotlib.pyplot as plt
 
 ######################################################################
 # Setup
 # -----
 #
-
-from pathlib import Path
-
-# %matplotlib inline
-import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.analysis import Analysis, AnalysisConfig
 from gammapy.modeling.models import Models
 
@@ -89,7 +89,7 @@ check_tutorials_setup()
 #
 # For configuration of the analysis we use the
 # `YAML <https://en.wikipedia.org/wiki/YAML>`__ data format. YAML is a
-# machine readable serialisation format, that is also friendly for humans
+# machine-readable serialisation format, that is also friendly for humans
 # to read. In this tutorial we will write the configuration file just
 # using Python strings, but of course the file can be created and modified
 # with any text editor of your choice.
@@ -150,7 +150,7 @@ print(config)
 # degrees of the Crab nebula. Parameters can be set directly or as a
 # python dict.
 #
-# PS: do not forget to setup your environment variable *$GAMMAPY_DATA* to
+# PS: do not forget to set up your environment variable `$GAMMAPY_DATA` to
 # your local directory containing the H.E.S.S. DL3-DR1 as described in
 # :ref:`quickstart-setup`.
 #
@@ -226,7 +226,7 @@ analysis.get_observations()
 # selection corresponds to the following ids:
 #
 
-analysis.observations.ids
+print(analysis.observations.ids)
 
 
 ######################################################################
@@ -383,7 +383,7 @@ analysis.run_fit()
 
 print(analysis.fit_result)
 
-model_1d.to_parameters_table()
+display(model_1d.to_parameters_table())
 
 
 ######################################################################
@@ -396,6 +396,7 @@ ax_spectrum.set_ylim(0.1, 200)
 ax_spectrum.set_xlim(0.2, 60)
 ax_residuals.set_xlim(0.2, 60)
 analysis.datasets[0].plot_masks(ax=ax_spectrum)
+plt.show()
 
 
 ######################################################################
@@ -426,18 +427,19 @@ with filename.open("r") as f:
 analysis.get_flux_points()
 
 crab_fp = analysis.flux_points.data
-crab_fp.to_table(sed_type="dnde", formatted=True)
+crab_fp_table = crab_fp.to_table(sed_type="dnde", formatted=True)
+display(crab_fp_table)
 
 
 ######################################################################
 # Let’s plot the flux points with their likelihood profile
 #
-
-plt.figure(figsize=(10, 8))
-ax_sed = crab_fp.plot(sed_type="e2dnde", color="darkorange")
+fig, ax_sed = plt.subplots()
+crab_fp.plot(ax=ax_sed, sed_type="e2dnde", color="darkorange")
 ax_sed.set_ylim(1.0e-12, 2.0e-10)
 ax_sed.set_xlim(0.5, 40)
 crab_fp.plot_ts_profiles(ax=ax_sed, sed_type="e2dnde")
+plt.show()
 
 
 ######################################################################
@@ -463,10 +465,10 @@ analysis.flux_points.write(filename, overwrite=True)
 # We can plot of the spectral fit with its error band overlaid with the
 # flux points:
 #
-
 ax_sed, ax_residuals = analysis.flux_points.plot_fit()
 ax_sed.set_ylim(1.0e-12, 1.0e-9)
 ax_sed.set_xlim(0.5, 40)
+plt.show()
 
 
 ######################################################################
@@ -476,6 +478,6 @@ ax_sed.set_xlim(0.5, 40)
 # You can look at the same analysis without the high level interface in
 # :doc:`/tutorials/analysis-1d/spectral_analysis`
 #
-# As we can store the best model fit, you can overlaid the fit results of
-# both methods on an unique plot.
+# As we can store the best model fit, you can overlay the fit results of
+# both methods on a unique plot.
 #

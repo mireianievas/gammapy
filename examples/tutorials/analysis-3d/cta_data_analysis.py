@@ -2,7 +2,7 @@
 Basic image exploration and fitting
 ===================================
 
-Detect sources, produce a sky image and a spectrum using CTA 1DC data.
+Detect sources, produce a sky image and a spectrum using CTA-1DC data.
 
 Introduction
 ------------
@@ -11,12 +11,11 @@ Introduction
 for simulated CTA data with Gammapy.**
 
 The dataset we will use is three observation runs on the Galactic
-center. This is a tiny (and thus quick to process and play with and
+Center. This is a tiny (and thus quick to process and play with and
 learn) subset of the simulated CTA dataset that was produced for the
 first data challenge in August 2017.
 
 """
-
 
 ######################################################################
 # Setup
@@ -32,9 +31,8 @@ import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from regions import CircleSkyRegion
-
-# %matplotlib inline
 import matplotlib.pyplot as plt
+from IPython.display import display
 from gammapy.data import DataStore
 from gammapy.datasets import Datasets, FluxPointsDataset, MapDataset, SpectrumDataset
 from gammapy.estimators import FluxPointsEstimator, TSMapEstimator
@@ -52,7 +50,7 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
     SkyModel,
 )
-from gammapy.visualization import plot_spectrum_datasets_off_regions
+from gammapy.visualization import plot_npred_signal, plot_spectrum_datasets_off_regions
 
 logging.basicConfig()
 log = logging.getLogger("gammapy.spectrum")
@@ -73,8 +71,8 @@ check_tutorials_setup()
 # A Gammapy analysis usually starts by creating a
 # `~gammapy.data.DataStore` and selecting observations.
 #
-# This is shown in detail in the other notebook, here we just pick three
-# observations near the galactic center.
+# This is shown in detail in other notebooks (see e.g. the :doc:`/tutorials/starting/analysis_2` tutorial),
+# here we choose three observations near the Galactic Center.
 #
 
 data_store = DataStore.from_dir("$GAMMAPY_DATA/cta-1dc/index/gps")
@@ -93,7 +91,7 @@ obs_id = [110380, 111140, 111159]
 observations = data_store.get_observations(obs_id)
 
 obs_cols = ["OBS_ID", "GLON_PNT", "GLAT_PNT", "LIVETIME"]
-data_store.obs_table.select_obs_id(obs_id)[obs_cols]
+display(data_store.obs_table.select_obs_id(obs_id)[obs_cols])
 
 
 ######################################################################
@@ -107,13 +105,24 @@ data_store.obs_table.select_obs_id(obs_id)[obs_cols]
 # analysis
 #
 
-axis = MapAxis.from_edges(
-    np.logspace(-1.0, 1.0, 10), unit="TeV", name="energy", interp="log"
+axis = MapAxis.from_energy_bounds(
+    0.1,
+    10,
+    nbin=10,
+    unit="TeV",
+    name="energy",
+)
+axis_true = MapAxis.from_energy_bounds(
+    0.05,
+    20,
+    nbin=20,
+    name="energy_true",
+    unit="TeV",
 )
 geom = WcsGeom.create(
     skydir=(0, 0), npix=(500, 400), binsz=0.02, frame="galactic", axes=[axis]
 )
-geom
+print(geom)
 
 
 ######################################################################
@@ -122,21 +131,23 @@ geom
 #
 
 # %%time
-stacked = MapDataset.create(geom=geom)
-stacked.edisp = None
+stacked = MapDataset.create(geom=geom, energy_axis_true=axis_true)
 maker = MapDatasetMaker(selection=["counts", "background", "exposure", "psf"])
 maker_safe_mask = SafeMaskMaker(methods=["offset-max"], offset_max=2.5 * u.deg)
 
 for obs in observations:
-    cutout = stacked.cutout(obs.pointing_radec, width="5 deg")
+    cutout = stacked.cutout(obs.get_pointing_icrs(obs.tmid), width="5 deg")
     dataset = maker.run(cutout, obs)
     dataset = maker_safe_mask.run(dataset, obs)
     stacked.stack(dataset)
 
+#
 # The maps are cubes, with an energy axis.
 # Let's also make some images:
-dataset_image = stacked.to_image()
+#
 
+dataset_image = stacked.to_image()
+geom_image = dataset_image.geoms["geom"]
 
 ######################################################################
 # Show images
@@ -145,11 +156,22 @@ dataset_image = stacked.to_image()
 # Let’s have a quick look at the images we computed …
 #
 
-dataset_image.counts.smooth(2).plot(vmax=5)
+fig, (ax1, ax2, ax3) = plt.subplots(
+    figsize=(15, 5),
+    ncols=3,
+    subplot_kw={"projection": geom_image.wcs},
+    gridspec_kw={"left": 0.1, "right": 0.9},
+)
 
-dataset_image.background.plot(vmax=5)
+ax1.set_title("Counts map")
+dataset_image.counts.smooth(2).plot(ax=ax1, vmax=5)
 
-dataset_image.excess.smooth(3).plot(vmax=2)
+ax2.set_title("Background map")
+dataset_image.background.plot(ax=ax2, vmax=5)
+
+ax3.set_title("Excess map")
+dataset_image.excess.smooth(3).plot(ax=ax3, vmax=2)
+plt.show()
 
 
 ######################################################################
@@ -157,7 +179,7 @@ dataset_image.excess.smooth(3).plot(vmax=2)
 # ----------------
 #
 # Use the class `~gammapy.estimators.TSMapEstimator` and function
-# `gammapy.estimators.utils.find_peaks` to detect sources on the images.
+# `~gammapy.estimators.utils.find_peaks` to detect sources on the images.
 # We search for 0.1 deg sigma gaussian sources in the dataset.
 #
 
@@ -182,24 +204,31 @@ sources = find_peaks(
     threshold=5,
     min_distance="0.2 deg",
 )
-sources
+display(sources)
 
+######################################################################
+# To get the position of the sources, simply
+#
 source_pos = SkyCoord(sources["ra"], sources["dec"])
-source_pos
+print(source_pos)
 
+######################################################################
 # Plot sources on top of significance sky image
-images_ts["sqrt_ts"].plot(add_cbar=True)
+#
+fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={"projection": geom_image.wcs})
+images_ts["sqrt_ts"].plot(ax=ax, add_cbar=True)
 
-plt.gca().scatter(
+ax.scatter(
     source_pos.ra.deg,
     source_pos.dec.deg,
-    transform=plt.gca().get_transform("icrs"),
+    transform=ax.get_transform("icrs"),
     color="none",
     edgecolor="white",
     marker="o",
     s=200,
     lw=1.5,
 )
+plt.show()
 
 
 ######################################################################
@@ -225,6 +254,10 @@ on_region = CircleSkyRegion(center=target_position, radius=on_radius)
 
 exclusion_mask = ~geom.to_image().region_mask([on_region])
 exclusion_mask.plot()
+plt.show()
+
+######################################################################
+# Configure spectral analysis
 
 energy_axis = MapAxis.from_energy_bounds(0.1, 40, 40, unit="TeV", name="energy")
 energy_axis_true = MapAxis.from_energy_bounds(
@@ -240,6 +273,9 @@ dataset_maker = SpectrumDatasetMaker(
 bkg_maker = ReflectedRegionsBackgroundMaker(exclusion_mask=exclusion_mask)
 safe_mask_masker = SafeMaskMaker(methods=["aeff-max"], aeff_percent=10)
 
+######################################################################
+# Run data reduction
+
 # %%time
 datasets = Datasets()
 
@@ -251,18 +287,22 @@ for observation in observations:
     dataset_on_off = safe_mask_masker.run(dataset_on_off, observation)
     datasets.append(dataset_on_off)
 
-plt.figure(figsize=(8, 8))
+######################################################################
+# Plot results
+
+plt.figure(figsize=(8, 6))
 ax = dataset_image.counts.smooth("0.03 deg").plot(vmax=8)
 
 on_region.to_pixel(ax.wcs).plot(ax=ax, edgecolor="white")
 plot_spectrum_datasets_off_regions(datasets, ax=ax)
+plt.show()
 
 
 ######################################################################
 # Model fit
 # ~~~~~~~~~
 #
-# The next step is to fit a spectral model, using all data (i.e. a
+# The next step is to fit a spectral model, using all data (i.e. a
 # “global” fit, using all energies).
 #
 
@@ -281,6 +321,30 @@ print(result)
 
 
 ######################################################################
+# Here we can plot the predicted number of counts for each model and
+# for the background in the dataset. This is especially useful when
+# studying complex field with a lot a sources. There is a function
+# in the visualization sub-package of gammapy that does this automatically.
+#
+# First we need to stack our datasets.
+
+
+stacked_dataset = datasets.stack_reduce(name="stacked")
+stacked_dataset.models = model
+
+print(stacked_dataset)
+
+
+######################################################################
+# Call `~gammapy.visualization.plot_npred_signal` to plot the predicted counts.
+#
+
+
+plot_npred_signal(stacked_dataset)
+plt.show()
+
+
+######################################################################
 # Spectral points
 # ~~~~~~~~~~~~~~~
 #
@@ -289,14 +353,9 @@ print(result)
 # profile to compute the flux and flux error.
 #
 
-# Flux points are computed on stacked observation
-stacked_dataset = datasets.stack_reduce(name="stacked")
 
-print(stacked_dataset)
-
+# Flux points are computed on stacked datasets
 energy_edges = MapAxis.from_energy_bounds("1 TeV", "30 TeV", nbin=5).edges
-
-stacked_dataset.models = model
 
 fpe = FluxPointsEstimator(energy_edges=energy_edges, source="source-gc")
 flux_points = fpe.run(datasets=[stacked_dataset])
@@ -309,12 +368,12 @@ flux_points.to_table(sed_type="dnde", formatted=True)
 #
 # Let’s plot the spectral model and points. You could do it directly, but
 # for convenience we bundle the model and the flux points in a
-# `FluxPointDataset`:
+# `~gammapy.datasets.FluxPointsDataset`:
 #
 
 flux_points_dataset = FluxPointsDataset(data=flux_points, models=model)
-
 flux_points_dataset.plot_fit()
+plt.show()
 
 
 ######################################################################
@@ -345,5 +404,5 @@ flux_points_dataset.plot_fit()
 #
 # -  This notebook showed an example of a first CTA analysis with Gammapy,
 #    using simulated 1DC data.
-# -  Let us know if you have any question or issues!
+# -  Let us know if you have any questions or issues!
 #
