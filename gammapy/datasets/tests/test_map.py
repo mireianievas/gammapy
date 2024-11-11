@@ -12,9 +12,14 @@ from astropy.utils.exceptions import AstropyUserWarning
 from regions import CircleSkyRegion
 import gammapy.irf.psf.map as psf_map_module
 from gammapy.catalog import SourceCatalog3FHL
-from gammapy.data import GTI
+from gammapy.data import GTI, DataStore
 from gammapy.datasets import Datasets, MapDataset, MapDatasetOnOff
-from gammapy.datasets.map import RAD_AXIS_DEFAULT
+from gammapy.datasets.map import (
+    _default_width,
+    create_map_dataset_from_observation,
+    RAD_AXIS_DEFAULT,
+)
+
 from gammapy.irf import (
     EDispKernelMap,
     EDispMap,
@@ -2240,3 +2245,21 @@ def test_get_psf_kernel_multiscale():
         mask = sep > width
         assert np.all(im.data[mask] == 0)
         assert np.any(im.data[~mask] > 0)
+
+
+@requires_data()
+def test_default_width():
+    datastore_magic = DataStore.from_dir("$GAMMAPY_DATA/magic/rad_max/data")
+    obs = datastore_magic.get_observations(required_irf="point-like")[0]
+    width = _default_width(obs)
+    assert_allclose(width, 0.77459669 * u.deg)
+
+
+@requires_data()
+def test_create_map_dataset_from_observation():
+    datastore = DataStore.from_dir("$GAMMAPY_DATA/hess-dl3-dr1/")
+    observations = datastore.get_observations()
+    dataset_new = create_map_dataset_from_observation(observations[0])
+
+    assert dataset_new.counts.data.sum() == 0
+    assert_allclose(dataset_new.exposure.data.sum(), 43239974121207.85)
