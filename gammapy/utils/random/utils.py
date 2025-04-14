@@ -287,3 +287,11 @@ def sample_times(
     else:
         time = time_delta.cumsum()
         return TimeDelta(time, format="sec")
+
+def multivariate_normal(mean, cov, size=1, seed=None):
+    # Controlled cholesky random sampling
+    rng = np.random.default_rng(seed)
+    mean = np.asarray(mean)
+    L = np.linalg.cholesky(cov)
+    z = rng.standard_normal((size, mean.size))
+    return mean + z @ L.T

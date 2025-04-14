@@ -29,6 +29,7 @@ from gammapy.utils.interpolation import (
 )
 from gammapy.utils.roots import find_roots
 from gammapy.utils.scripts import make_path
+from gammapy.utils.random import multivariate_normal
 from ..covariance import CovarianceMixin
 from .core import ModelBase
 
@@ -186,7 +187,7 @@ class SpectralModel(ModelBase):
 
         """
         rng = np.random.default_rng(seed=42)
-        samples = rng.multivariate_normal(
+        samples = multivariate_normal(
             self.parameters.value, self.covariance.data, n_samples
         )
         return u.Quantity([fct(samples[k, :]) for k in range(n_samples)])
