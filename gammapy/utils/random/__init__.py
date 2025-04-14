@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Random probability distribution helpers."""
+
 from .inverse_cdf import InverseCDFSampler
 from .utils import (
     draw,
@@ -10,6 +11,7 @@ from .utils import (
     sample_sphere,
     sample_sphere_distance,
     sample_times,
+    multivariate_normal,
 )
 
 __all__ = [
@@ -22,4 +24,5 @@ __all__ = [
     "sample_sphere",
     "sample_sphere_distance",
     "sample_times",
+    "multivariate_normal",
 ]
