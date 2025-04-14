@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Helper functions to work with distributions."""
+
 import numbers
 import numpy as np
 import scipy.integrate
@@ -87,8 +88,9 @@ def get_random_state(init):
         return init
     else:
         raise ValueError(
-            "{} cannot be used to seed a numpy.random.RandomState"
-            " instance".format(init)
+            "{} cannot be used to seed a numpy.random.RandomState" " instance".format(
+                init
+            )
         )
 
 
@@ -288,10 +290,47 @@ def sample_times(
         time = time_delta.cumsum()
         return TimeDelta(time, format="sec")
 
+
 def multivariate_normal(mean, cov, size=1, seed=None):
-    # Controlled cholesky random sampling
-    rng = np.random.default_rng(seed)
-    mean = np.asarray(mean)
-    L = np.linalg.cholesky(cov)
-    z = rng.standard_normal((size, mean.size))
-    return mean + z @ L.T
+    """
+    Cross-platform deterministic multivariate normal sampler.
+
+    Parameters
+    ----------
+    mean : array_like
+        Mean vector of the distribution.
+    cov : array_like
+        Covariance matrix of the distribution.
+    size : int
+        Number of samples to generate.
+    seed : int
+        Seed for the RNG.
+
+    Returns
+    -------
+    samples : ndarray
+        Random samples with shape (size, len(mean)).
+    """
+    mean = np.asarray(mean, dtype=np.float64)
+    cov = np.asarray(cov, dtype=np.float64)
+
+    # Use platform-independent PRNG
+    rng = np.random.Generator(np.random.PCG64(seed))
+
+    # Eigen-decomposition (symmetric matrix => real eigvals)
+    eigvals, eigvecs = np.linalg.eigh(cov)
+
+    # Check for positive definiteness
+    if np.any(eigvals < 0):
+        raise ValueError("Covariance matrix is not positive semi-definite.")
+
+    # Construct transformation matrix
+    transform = eigvecs @ np.diag(np.sqrt(eigvals))
+
+    # Draw standard normal samples
+    z = rng.standard_normal(size=(size, len(mean)))
+
+    # Transform to desired distribution
+    samples = z @ transform.T + mean
+
+    return samples
